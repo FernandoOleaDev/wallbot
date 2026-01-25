@@ -114,7 +114,7 @@ class ImageRenderer:
             # Draw status icons in different colors
             x_pos = 4
             if item.get("reserved"):
-                draw.text((x_pos, y_pos), "[R]", fill=(245, 158, 11), font=self.font_small)
+                draw.text((x_pos, y_pos), "[R]", fill=(239, 68, 68), font=self.font_small)
                 x_pos += 22
             if item.get("has_shipping"):
                 draw.text((x_pos, y_pos), "[E]", fill=(59, 130, 246), font=self.font_small)
@@ -124,11 +124,11 @@ class ImageRenderer:
             draw.text((4, y_pos), price_text, fill=PRICE_COLOR, font=self.font_price)
         y_pos += 20
 
-        # Title (truncated)
+        # Title (truncated, smaller font for more text)
         title = item.get("title", "Sin titulo")
-        title = self._truncate_text(title, SCREEN_WIDTH - 8, self.font_regular)
-        draw.text((4, y_pos), title, fill=TEXT_COLOR, font=self.font_regular)
-        y_pos += 14
+        title = self._truncate_text(title, SCREEN_WIDTH - 8, self.font_small)
+        draw.text((4, y_pos), title, fill=TEXT_COLOR, font=self.font_small)
+        y_pos += 12
 
         # Location + Date on same line
         location = item.get("location", "")
