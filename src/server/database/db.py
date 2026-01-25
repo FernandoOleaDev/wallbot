@@ -59,10 +59,17 @@ class Database:
                     order_by TEXT DEFAULT 'newest',
                     active INTEGER DEFAULT 1,
                     last_item_id TEXT,
+                    required_words TEXT,
                     created_at TEXT DEFAULT (datetime('now')),
                     updated_at TEXT DEFAULT (datetime('now'))
                 )
             """)
+
+            # Migration: add required_words column if it doesn't exist
+            cursor.execute("PRAGMA table_info(search)")
+            columns = [col[1] for col in cursor.fetchall()]
+            if "required_words" not in columns:
+                cursor.execute("ALTER TABLE search ADD COLUMN required_words TEXT")
 
             # Item table
             cursor.execute("""
@@ -77,12 +84,37 @@ class Database:
                     image_url TEXT,
                     location TEXT,
                     seller_id TEXT,
+                    published_date TEXT,
                     first_seen TEXT DEFAULT (datetime('now')),
                     last_updated TEXT DEFAULT (datetime('now')),
                     notified INTEGER DEFAULT 0,
                     UNIQUE(wallapop_id, search_id),
                     FOREIGN KEY(search_id) REFERENCES search(id) ON DELETE CASCADE
                 )
+            """)
+
+            # Migration: add published_date column if it doesn't exist
+            cursor.execute("PRAGMA table_info(item)")
+            item_columns = [col[1] for col in cursor.fetchall()]
+            if "published_date" not in item_columns:
+                cursor.execute("ALTER TABLE item ADD COLUMN published_date TEXT")
+
+            # Config table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS config (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at TEXT DEFAULT (datetime('now'))
+                )
+            """)
+
+            # Initialize default config values
+            cursor.execute("""
+                INSERT OR IGNORE INTO config (key, value) VALUES
+                ('search_interval', '300'),
+                ('rotation_interval', '10'),
+                ('items_count', '20'),
+                ('time_filter', 'all')
             """)
 
             # Indexes
@@ -94,17 +126,18 @@ class Database:
 
     def create_search(self, name: str, keywords: str, min_price: Optional[int] = None,
                       max_price: Optional[int] = None, category_ids: Optional[str] = None,
-                      distance: int = 400, active: bool = True) -> Dict[str, Any]:
+                      distance: int = 400, active: bool = True,
+                      required_words: Optional[str] = None) -> Dict[str, Any]:
         """Create a new search."""
         now = datetime.utcnow().isoformat() + "Z"
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO search (name, keywords, min_price, max_price, category_ids,
-                                   distance, active, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                   distance, active, required_words, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (name, keywords, min_price, max_price, category_ids,
-                  distance, 1 if active else 0, now, now))
+                  distance, 1 if active else 0, required_words, now, now))
 
             search_id = cursor.lastrowid
             return self.get_search(search_id)
@@ -149,7 +182,8 @@ class Database:
     def update_search(self, search_id: int, **kwargs) -> Optional[Dict[str, Any]]:
         """Update a search."""
         allowed_fields = {'name', 'keywords', 'min_price', 'max_price',
-                         'category_ids', 'distance', 'active', 'last_item_id'}
+                         'category_ids', 'distance', 'active', 'last_item_id',
+                         'required_words'}
         updates = {k: v for k, v in kwargs.items() if k in allowed_fields}
 
         if not updates:
@@ -176,6 +210,13 @@ class Database:
             cursor.execute("DELETE FROM search WHERE id = ?", (search_id,))
             return cursor.rowcount > 0
 
+    def delete_items_for_search(self, search_id: int) -> int:
+        """Delete all items for a search (reset)."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM item WHERE search_id = ?", (search_id,))
+            return cursor.rowcount
+
     def _row_to_search_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
         """Convert a database row to a search dictionary."""
         return {
@@ -189,6 +230,7 @@ class Database:
             "order_by": row["order_by"],
             "active": bool(row["active"]),
             "last_item_id": row["last_item_id"],
+            "required_words": row["required_words"] if "required_words" in row.keys() else None,
             "items_count": row["items_count"] if "items_count" in row.keys() else 0,
             "created_at": row["created_at"],
             "updated_at": row["updated_at"]
@@ -198,7 +240,8 @@ class Database:
 
     def create_item(self, wallapop_id: str, search_id: int, title: str,
                     price: int, web_slug: str, image_url: str,
-                    location: str, seller_id: str) -> Optional[Dict[str, Any]]:
+                    location: str, seller_id: str,
+                    published_date: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Create a new item (or ignore if duplicate)."""
         now = datetime.utcnow().isoformat() + "Z"
         with self._get_connection() as conn:
@@ -206,10 +249,10 @@ class Database:
             try:
                 cursor.execute("""
                     INSERT INTO item (wallapop_id, search_id, title, price, web_slug,
-                                     image_url, location, seller_id, first_seen, last_updated)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                     image_url, location, seller_id, published_date, first_seen, last_updated)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (wallapop_id, search_id, title, price, web_slug,
-                      image_url, location, seller_id, now, now))
+                      image_url, location, seller_id, published_date, now, now))
                 return self.get_item(cursor.lastrowid)
             except sqlite3.IntegrityError:
                 # Duplicate - return existing
@@ -300,8 +343,39 @@ class Database:
             "image_url": row["image_url"],
             "location": row["location"],
             "seller_id": row["seller_id"],
+            "published_date": row["published_date"] if "published_date" in row.keys() else None,
             "first_seen": row["first_seen"],
             "last_updated": row["last_updated"],
             "notified": bool(row["notified"]),
             "wallapop_url": f"https://es.wallapop.com/item/{row['web_slug']}" if row['web_slug'] else None
         }
+
+    # ==================== CONFIG OPERATIONS ====================
+
+    def get_config(self, key: str, default: str = "") -> str:
+        """Get a config value."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT value FROM config WHERE key = ?", (key,))
+            row = cursor.fetchone()
+            if row:
+                return row["value"]
+            return default
+
+    def set_config(self, key: str, value: str) -> None:
+        """Set a config value."""
+        now = datetime.utcnow().isoformat() + "Z"
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT OR REPLACE INTO config (key, value, updated_at)
+                VALUES (?, ?, ?)
+            """, (key, value, now))
+
+    def get_all_config(self) -> Dict[str, str]:
+        """Get all config values."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT key, value FROM config")
+            rows = cursor.fetchall()
+            return {row["key"]: row["value"] for row in rows}

@@ -204,23 +204,33 @@
                     <div class="hint">Terminos de busqueda en Wallapop</div>
                 </div>
 
+                <div class="form-group">
+                    <label for="required_words">Palabras obligatorias (opcional)</label>
+                    <input type="text" id="required_words" name="required_words"
+                           placeholder="Ej: 8gb, nuevo"
+                           value="{{ search.required_words if search and search.required_words else '' }}">
+                    <div class="hint">Solo guarda items cuyo titulo contenga TODAS estas palabras (separadas por coma)</div>
+                </div>
+
                 <div class="section-title">Filtros de precio</div>
 
                 <div class="price-row">
                     <div class="form-group">
-                        <label for="min_price">Precio minimo (cents)</label>
-                        <input type="number" id="min_price" name="min_price" min="0"
-                               placeholder="Ej: 3000"
-                               value="{{ search.min_price if search and search.min_price else '' }}">
-                        <div class="hint">3000 = 30,00 EUR</div>
+                        <label for="min_price">Precio minimo (EUR)</label>
+                        <input type="text" id="min_price" name="min_price"
+                               placeholder="Ej: 30,00"
+                               pattern="[0-9]*[,.]?[0-9]*"
+                               value="{{ '%.2f'|format(search.min_price / 100)|replace('.', ',') if search and search.min_price else '' }}">
+                        <div class="hint">Ej: 89,50 o 89.50</div>
                     </div>
 
                     <div class="form-group">
-                        <label for="max_price">Precio maximo (cents)</label>
-                        <input type="number" id="max_price" name="max_price" min="0"
-                               placeholder="Ej: 8000"
-                               value="{{ search.max_price if search and search.max_price else '' }}">
-                        <div class="hint">8000 = 80,00 EUR</div>
+                        <label for="max_price">Precio maximo (EUR)</label>
+                        <input type="text" id="max_price" name="max_price"
+                               placeholder="Ej: 150,00"
+                               pattern="[0-9]*[,.]?[0-9]*"
+                               value="{{ '%.2f'|format(search.max_price / 100)|replace('.', ',') if search and search.max_price else '' }}">
+                        <div class="hint">Ej: 150,00 o 150.00</div>
                     </div>
                 </div>
 
@@ -266,6 +276,18 @@
                     }
                     toggleDistance();
                 </script>
+
+                {% if search %}
+                <div class="section-title">Opciones de actualizacion</div>
+
+                <div class="form-group">
+                    <label class="toggle-label" style="border-color: #dc2626;">
+                        <input type="checkbox" id="reset_items" name="reset_items">
+                        <span style="color: #f87171;">Borrar items antiguos (resetear busqueda)</span>
+                    </label>
+                    <div class="hint">Marca esta opcion si has cambiado los filtros de precio y quieres empezar de cero</div>
+                </div>
+                {% endif %}
 
                 <div class="actions">
                     <button type="submit" class="btn">

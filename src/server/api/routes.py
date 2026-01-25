@@ -77,6 +77,7 @@ class ItemResponse(BaseModel):
     image_url: Optional[str]
     location: Optional[str]
     first_seen: str
+    published_date: Optional[str]
     wallapop_url: Optional[str]
 
 
@@ -92,16 +93,21 @@ class ItemListResponse(BaseModel):
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
     """Health check endpoint for monitoring."""
+    from server.wallapop.watcher import get_watcher
+
     uptime = int(time.time() - _start_time)
     db = get_db()
     db_status = "connected" if db else "disconnected"
 
+    watcher = get_watcher()
+    watcher_status = "running" if watcher.is_running else "stopped"
+
     return HealthResponse(
         status="ok",
-        version="3.0.0",
+        version="0.17.0",
         uptime_seconds=uptime,
         database=db_status,
-        watcher="stopped"  # Will be "running" when watcher is implemented
+        watcher=watcher_status
     )
 
 
@@ -217,7 +223,8 @@ async def list_search_items(
             web_slug=item.get("web_slug"),
             image_url=item.get("image_url"),
             location=item.get("location"),
-            first_seen=item["first_seen"],
+            first_seen=item.get("first_seen", ""),
+            published_date=item.get("published_date"),
             wallapop_url=item.get("wallapop_url")
         ))
 
@@ -256,7 +263,8 @@ async def get_latest_item(search_id: int):
         web_slug=item.get("web_slug"),
         image_url=item.get("image_url"),
         location=item.get("location"),
-        first_seen=item["first_seen"],
+        first_seen=item.get("first_seen", ""),
+        published_date=item.get("published_date"),
         wallapop_url=item.get("wallapop_url")
     )
 
@@ -264,28 +272,36 @@ async def get_latest_item(search_id: int):
 @router.get("/searches/{search_id}/screen.jpg")
 async def get_screen_image(search_id: int):
     """Get the rendered 128x160 JPG image for ESP32."""
+    from server.renderer import get_renderer
+
     db = get_db()
 
     search = db.get_search(search_id)
     if not search:
         raise HTTPException(status_code=404, detail=f"Search with id {search_id} not found")
 
-    # Check if rendered image exists
-    data_dir = os.getenv("WALLBOT_DATA_DIR", "./data")
-    render_path = os.path.join(data_dir, "renders", f"{search_id}.jpg")
+    renderer = get_renderer()
 
-    if os.path.exists(render_path):
-        return FileResponse(
-            render_path,
+    # Check if rendered image exists in cache
+    cached = renderer.get_cached_render(search_id)
+    if cached:
+        return Response(
+            content=cached,
             media_type="image/jpeg",
             headers={"Cache-Control": "no-cache"}
         )
 
-    # Return placeholder image (will be implemented in FASE 4)
-    # For now, return 404
-    raise HTTPException(
-        status_code=404,
-        detail="Image not yet rendered. Run watcher to generate images."
+    # Generate on-the-fly
+    latest_item = db.get_latest_item(search_id)
+    image_bytes = renderer.render_search_latest(search, latest_item)
+
+    # Cache it
+    renderer.save_render(search_id, image_bytes)
+
+    return Response(
+        content=image_bytes,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "no-cache"}
     )
 
 
@@ -299,24 +315,29 @@ async def get_esp32_screen():
     The server automatically rotates between active searches.
     """
     from server.screen_rotator import get_rotator
+    from server.renderer import get_renderer
 
     rotator = get_rotator()
     current = rotator.get_current_search()
 
     if not current:
         # No active searches - return placeholder
-        raise HTTPException(
-            status_code=404,
-            detail="No active searches configured"
+        renderer = get_renderer()
+        image_bytes = renderer.render_no_items("Sin busquedas")
+        return Response(
+            content=image_bytes,
+            media_type="image/jpeg",
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
         )
 
-    # Check if rendered image exists
-    data_dir = os.getenv("WALLBOT_DATA_DIR", "./data")
-    render_path = os.path.join(data_dir, "renders", f"{current['id']}.jpg")
+    renderer = get_renderer()
+    db = get_db()
 
-    if os.path.exists(render_path):
-        return FileResponse(
-            render_path,
+    # Check if rendered image exists in cache
+    cached = renderer.get_cached_render(current['id'])
+    if cached:
+        return Response(
+            content=cached,
             media_type="image/jpeg",
             headers={
                 "Cache-Control": "no-cache, no-store, must-revalidate",
@@ -325,10 +346,21 @@ async def get_esp32_screen():
             }
         )
 
-    # No image yet
-    raise HTTPException(
-        status_code=404,
-        detail=f"Image for search '{current['name']}' not yet rendered"
+    # Generate on-the-fly
+    latest_item = db.get_latest_item(current['id'])
+    image_bytes = renderer.render_search_latest(current, latest_item)
+
+    # Cache it
+    renderer.save_render(current['id'], image_bytes)
+
+    return Response(
+        content=image_bytes,
+        media_type="image/jpeg",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "X-Current-Search-Id": str(current["id"]),
+            "X-Current-Search-Name": current["name"]
+        }
     )
 
 
@@ -379,3 +411,143 @@ async def set_current_screen(search_id: int):
 
     status = rotator.get_status()
     return {"message": f"Set current search to {search_id}", "status": status}
+
+
+# ==================== WATCHER CONTROL ENDPOINTS ====================
+
+class WatcherStatusResponse(BaseModel):
+    running: bool
+    interval_seconds: int
+    last_run: float
+    seconds_since_last_run: Optional[int]
+
+
+@router.get("/watcher/status", response_model=WatcherStatusResponse)
+async def get_watcher_status():
+    """Get watcher status."""
+    from server.wallapop.watcher import get_watcher
+
+    watcher = get_watcher()
+    return WatcherStatusResponse(**watcher.get_status())
+
+
+@router.post("/watcher/run")
+async def run_watcher_once():
+    """Trigger a manual search cycle for all active searches."""
+    from server.wallapop.watcher import get_watcher
+
+    watcher = get_watcher()
+    results = watcher.run_once()
+    return {
+        "message": "Search cycle completed",
+        "results": results
+    }
+
+
+@router.post("/searches/{search_id}/run")
+async def run_single_search(search_id: int):
+    """Trigger a manual search for a specific search."""
+    from server.wallapop.watcher import get_watcher
+
+    db = get_db()
+    search = db.get_search(search_id)
+    if not search:
+        raise HTTPException(status_code=404, detail=f"Search with id {search_id} not found")
+
+    watcher = get_watcher()
+    results = watcher.search_single(search_id)
+    return {
+        "message": f"Search '{search['name']}' completed",
+        "results": results
+    }
+
+
+@router.delete("/searches/{search_id}/items")
+async def delete_search_items(search_id: int):
+    """Delete all items for a search (reset the search)."""
+    from server.renderer import get_renderer
+
+    db = get_db()
+    search = db.get_search(search_id)
+    if not search:
+        raise HTTPException(status_code=404, detail=f"Search with id {search_id} not found")
+
+    # Delete all items for this search
+    deleted_count = db.delete_items_for_search(search_id)
+
+    # Clear last_item_id
+    db.update_search(search_id, last_item_id=None)
+
+    # Invalidate cached render
+    renderer = get_renderer()
+    cache_path = renderer.renders_dir / f"search_{search_id}.jpg"
+    if cache_path.exists():
+        import os
+        os.remove(cache_path)
+
+    return {
+        "message": f"Deleted {deleted_count} items for search '{search['name']}'",
+        "deleted_count": deleted_count
+    }
+
+
+# ==================== CONFIGURATION ENDPOINTS ====================
+
+class ConfigResponse(BaseModel):
+    search_interval: int
+    rotation_interval: int
+    items_count: int
+    time_filter: str
+
+
+class ConfigUpdate(BaseModel):
+    search_interval: Optional[int] = Field(None, ge=60, le=3600)
+    rotation_interval: Optional[int] = Field(None, ge=5, le=300)
+    items_count: Optional[int] = Field(None, ge=5, le=100)
+    time_filter: Optional[str] = Field(None)
+
+
+@router.get("/config", response_model=ConfigResponse)
+async def get_config():
+    """Get current configuration."""
+    db = get_db()
+    return ConfigResponse(
+        search_interval=int(db.get_config("search_interval", "300")),
+        rotation_interval=int(db.get_config("rotation_interval", "10")),
+        items_count=int(db.get_config("items_count", "20")),
+        time_filter=db.get_config("time_filter", "all")
+    )
+
+
+@router.put("/config", response_model=ConfigResponse)
+async def update_config(config: ConfigUpdate):
+    """Update configuration."""
+    from server.wallapop.watcher import get_watcher
+    from server.screen_rotator import get_rotator
+
+    db = get_db()
+
+    if config.search_interval is not None:
+        db.set_config("search_interval", str(config.search_interval))
+        watcher = get_watcher()
+        watcher.interval = config.search_interval
+
+    if config.rotation_interval is not None:
+        db.set_config("rotation_interval", str(config.rotation_interval))
+        rotator = get_rotator()
+        rotator.rotation_interval = config.rotation_interval
+
+    if config.items_count is not None:
+        db.set_config("items_count", str(config.items_count))
+
+    if config.time_filter is not None:
+        # Validate time_filter
+        if config.time_filter in ("today", "week", "all"):
+            db.set_config("time_filter", config.time_filter)
+
+    return ConfigResponse(
+        search_interval=int(db.get_config("search_interval", "300")),
+        rotation_interval=int(db.get_config("rotation_interval", "10")),
+        items_count=int(db.get_config("items_count", "20")),
+        time_filter=db.get_config("time_filter", "all")
+    )

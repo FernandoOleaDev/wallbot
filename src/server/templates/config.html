@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} - FerWallBot</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            line-height: 1.6;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #13c1ac;
+            margin-bottom: 10px;
+        }
+        .breadcrumb {
+            margin-bottom: 20px;
+        }
+        .breadcrumb a {
+            color: #13c1ac;
+            text-decoration: none;
+        }
+        .breadcrumb a:hover {
+            text-decoration: underline;
+        }
+        .card {
+            background: #16213e;
+            border-radius: 12px;
+            padding: 25px;
+            border: 1px solid #1f4068;
+            margin-bottom: 20px;
+        }
+        .card h2 {
+            font-size: 16px;
+            margin-bottom: 20px;
+            color: #13c1ac;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #ccc;
+        }
+        .form-group .help-text {
+            font-size: 12px;
+            color: #888;
+            margin-top: 5px;
+        }
+        .form-group input[type="number"],
+        .form-group select {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #1f4068;
+            background: #1a1a2e;
+            color: #eee;
+            font-size: 16px;
+        }
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #13c1ac;
+        }
+        .btn {
+            display: inline-block;
+            background: #13c1ac;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        .btn:hover {
+            background: #0fa898;
+            transform: translateY(-1px);
+        }
+        .btn-secondary {
+            background: #374151;
+        }
+        .btn-secondary:hover {
+            background: #4b5563;
+        }
+        .actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 25px;
+        }
+        .alert {
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        .alert-success {
+            background: #065f46;
+            border: 1px solid #10b981;
+            color: #6ee7b7;
+        }
+        .current-values {
+            background: #1a1a2e;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+        .current-values .item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #1f4068;
+        }
+        .current-values .item:last-child {
+            border-bottom: none;
+        }
+        .current-values .label {
+            color: #888;
+        }
+        .current-values .value {
+            font-weight: 600;
+            color: #13c1ac;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="breadcrumb">
+            <a href="/">Inicio</a> / Configuracion
+        </div>
+
+        <h1>Configuracion</h1>
+        <p style="color: #888; margin-bottom: 20px;">Ajusta los parametros del sistema</p>
+
+        {% if request.query_params.get('saved') %}
+        <div class="alert alert-success">
+            Configuracion guardada correctamente
+        </div>
+        {% endif %}
+
+        <form action="/config" method="POST">
+            <div class="card">
+                <h2>Intervalos de Tiempo</h2>
+
+                <div class="form-group">
+                    <label for="search_interval">Intervalo de busqueda (segundos)</label>
+                    <input type="number" id="search_interval" name="search_interval"
+                           value="{{ config.search_interval }}" min="60" max="3600" required>
+                    <div class="help-text">
+                        Cada cuanto tiempo el sistema busca nuevos productos en Wallapop.<br>
+                        Minimo: 60s (1 min), Maximo: 3600s (1 hora). Recomendado: 300s (5 min)
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="rotation_interval">Intervalo de rotacion de pantalla (segundos)</label>
+                    <input type="number" id="rotation_interval" name="rotation_interval"
+                           value="{{ config.rotation_interval }}" min="5" max="300" required>
+                    <div class="help-text">
+                        Cada cuanto tiempo cambia la imagen entre busquedas activas en el ESP32.<br>
+                        Minimo: 5s, Maximo: 300s (5 min). Recomendado: 10s
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Opciones de Busqueda Wallapop</h2>
+
+                <div class="form-group">
+                    <label for="items_count">Numero de items por busqueda</label>
+                    <input type="number" id="items_count" name="items_count"
+                           value="{{ config.items_count }}" min="5" max="100" required>
+                    <div class="help-text">
+                        Cuantos items pedir a Wallapop en cada busqueda.<br>
+                        Minimo: 5, Maximo: 100. Recomendado: 20
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="time_filter">Filtro de tiempo</label>
+                    <select id="time_filter" name="time_filter" required>
+                        <option value="all" {{ 'selected' if config.time_filter == 'all' else '' }}>Todo (sin filtro)</option>
+                        <option value="today" {{ 'selected' if config.time_filter == 'today' else '' }}>Solo hoy</option>
+                        <option value="week" {{ 'selected' if config.time_filter == 'week' else '' }}>Esta semana</option>
+                    </select>
+                    <div class="help-text">
+                        Filtrar items por fecha de publicacion.<br>
+                        "Todo" muestra mas resultados pero puede incluir items antiguos.
+                    </div>
+                </div>
+
+                <div class="current-values">
+                    <strong style="color: #ccc; margin-bottom: 10px; display: block;">Valores actuales:</strong>
+                    <div class="item">
+                        <span class="label">Busqueda cada</span>
+                        <span class="value">{{ config.search_interval }}s ({{ (config.search_interval / 60)|round(1) }} min)</span>
+                    </div>
+                    <div class="item">
+                        <span class="label">Rotacion cada</span>
+                        <span class="value">{{ config.rotation_interval }}s</span>
+                    </div>
+                    <div class="item">
+                        <span class="label">Items por busqueda</span>
+                        <span class="value">{{ config.items_count }}</span>
+                    </div>
+                    <div class="item">
+                        <span class="label">Filtro de tiempo</span>
+                        <span class="value">{{ config.time_filter }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="actions">
+                <button type="submit" class="btn">Guardar Cambios</button>
+                <a href="/" class="btn btn-secondary">Cancelar</a>
+            </div>
+        </form>
+    </div>
+</body>
+</html>

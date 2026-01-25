@@ -16,7 +16,13 @@ class ScreenRotator:
         self._current_search_id: Optional[int] = None
         self._current_index: int = 0
         self._last_rotation: float = 0
-        self._rotation_interval: int = int(os.getenv("WALLBOT_ROTATION_INTERVAL", "10"))
+        # Load interval from database, fallback to env var, then default
+        db = get_db()
+        db_interval = db.get_config("rotation_interval", "")
+        if db_interval:
+            self._rotation_interval = int(db_interval)
+        else:
+            self._rotation_interval = int(os.getenv("WALLBOT_ROTATION_INTERVAL", "10"))
         self._lock = threading.Lock()
 
     @classmethod

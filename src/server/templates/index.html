@@ -220,12 +220,124 @@
             font-size: 12px;
             margin-left: 10px;
         }
+        .search-container {
+            background: #1a1a2e;
+            border-radius: 8px;
+            border-left: 4px solid #13c1ac;
+            overflow: hidden;
+        }
+        .search-container.inactive {
+            border-left-color: #666;
+            opacity: 0.6;
+        }
+        .search-header {
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+        }
+        .search-header:hover {
+            background: rgba(255,255,255,0.03);
+        }
+        .search-header .info h3 {
+            font-size: 16px;
+            margin-bottom: 4px;
+        }
+        .search-header .info .meta {
+            font-size: 12px;
+            color: #888;
+        }
+        .search-header .actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .items-panel {
+            display: none;
+            background: #0d1117;
+            border-top: 1px solid #1f4068;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .items-panel.open {
+            display: block;
+        }
+        .items-list {
+            padding: 10px;
+        }
+        .item-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            background: #16213e;
+        }
+        .item-row:hover {
+            background: #1f4068;
+        }
+        .item-row img {
+            width: 50px;
+            height: 50px;
+            object-fit: cover;
+            border-radius: 4px;
+            background: #1a1a2e;
+        }
+        .item-row .item-info {
+            flex: 1;
+            min-width: 0;
+        }
+        .item-row .item-title {
+            font-size: 13px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-bottom: 2px;
+        }
+        .item-row .item-meta {
+            font-size: 11px;
+            color: #888;
+        }
+        .item-row .item-price {
+            font-size: 14px;
+            font-weight: 600;
+            color: #13c1ac;
+            white-space: nowrap;
+        }
+        .item-row a {
+            color: #13c1ac;
+            text-decoration: none;
+        }
+        .item-row a:hover {
+            text-decoration: underline;
+        }
+        .toggle-arrow {
+            font-size: 12px;
+            transition: transform 0.2s;
+            color: #888;
+        }
+        .toggle-arrow.open {
+            transform: rotate(180deg);
+        }
+        .items-loading {
+            padding: 20px;
+            text-align: center;
+            color: #888;
+        }
+        .no-items {
+            padding: 20px;
+            text-align: center;
+            color: #666;
+            font-size: 13px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>FerWallBot <span class="version-badge">v3.0</span></h1>
+            <h1>FerWallBot <span class="version-badge">v0.17</span></h1>
             <p>Monitor de busquedas en Wallapop para ESP32</p>
         </header>
 
@@ -258,7 +370,9 @@
                 <h2><span class="icon">&#128736;</span> Acciones Rapidas</h2>
                 <div style="display: flex; flex-direction: column; gap: 10px;">
                     <a href="/searches/new" class="btn">+ Nueva Busqueda</a>
+                    <button onclick="runSearchNow()" class="btn" style="background: #f59e0b;" id="search-now-btn">Buscar Ahora</button>
                     <a href="/screen" class="btn" style="background: #8b5cf6;">Ver Pantalla ESP32</a>
+                    <a href="/config" class="btn" style="background: #6366f1;">Configuracion</a>
                     <a href="/docs" class="btn btn-secondary" target="_blank">Ver API Docs (Swagger)</a>
                 </div>
             </div>
@@ -333,7 +447,8 @@
                 <div class="esp32-info" style="margin-top: 10px;">
                     <strong>Resolucion:</strong> 128 x 160 px<br>
                     <strong>Formato:</strong> JPEG baseline<br>
-                    <strong>Rotacion:</strong> Cada <span id="rotation-interval">10</span>s
+                    <strong>Rotacion:</strong> Cada <span id="rotation-interval">10</span>s<br>
+                    <strong>Busqueda:</strong> Cada <span id="search-interval">300</span>s
                 </div>
                 <div style="margin-top: 15px;">
                     <a href="/screen" class="btn btn-sm" style="background: #8b5cf6;">Ver en tiempo real</a>
@@ -383,26 +498,35 @@
                 }
 
                 list.innerHTML = data.searches.map(s => `
-                    <div class="search-item ${s.active ? '' : 'inactive'}">
-                        <div class="info">
-                            <h3>${s.name}</h3>
-                            <div class="meta">
-                                <strong>${s.keywords}</strong> |
-                                Precio: ${s.min_price ? (s.min_price/100).toFixed(0) : '0'}-${s.max_price ? (s.max_price/100).toFixed(0) : '∞'} EUR |
-                                ${s.distance === 0 ? 'Toda Espana' : s.distance + ' km'} |
-                                Items: ${s.items_count}
+                    <div class="search-container ${s.active ? '' : 'inactive'}">
+                        <div class="search-header" onclick="toggleItems(${s.id}, event)">
+                            <div class="info">
+                                <h3>
+                                    <span class="toggle-arrow" id="arrow-${s.id}">&#9660;</span>
+                                    ${s.name}
+                                </h3>
+                                <div class="meta">
+                                    <strong>${s.keywords}</strong> |
+                                    Precio: ${s.min_price ? (s.min_price/100).toFixed(2).replace('.', ',') : '0'}-${s.max_price ? (s.max_price/100).toFixed(2).replace('.', ',') : '∞'} EUR |
+                                    ${s.distance === 0 ? 'Toda Espana' : s.distance + ' km'} |
+                                    Items: ${s.items_count}
+                                </div>
+                            </div>
+                            <div class="actions" onclick="event.stopPropagation()">
+                                <button id="refresh-${s.id}" onclick="runSearchSingle(${s.id}, '${s.name.replace(/'/g, "\\'")}')" class="btn btn-sm" style="background: #f59e0b;" title="Buscar ahora">&#8635;</button>
+                                <a href="/searches/${s.id}/preview" class="btn btn-sm btn-secondary" title="Ver imagen ESP32">IMG</a>
+                                <a href="/searches/${s.id}/edit" class="btn btn-sm btn-secondary">Editar</a>
+                                <form action="/searches/${s.id}/toggle" method="POST" style="display:inline;">
+                                    <button type="submit" class="btn btn-sm btn-secondary">${s.active ? 'Pausar' : 'Activar'}</button>
+                                </form>
+                                <form action="/searches/${s.id}/delete" method="POST" style="display:inline;"
+                                      onsubmit="return confirm('Eliminar esta busqueda?')">
+                                    <button type="submit" class="btn btn-sm btn-danger">X</button>
+                                </form>
                             </div>
                         </div>
-                        <div class="actions">
-                            <a href="/searches/${s.id}/preview" class="btn btn-sm btn-secondary" title="Ver imagen ESP32">IMG</a>
-                            <a href="/searches/${s.id}/edit" class="btn btn-sm btn-secondary">Editar</a>
-                            <form action="/searches/${s.id}/toggle" method="POST" style="display:inline;">
-                                <button type="submit" class="btn btn-sm btn-secondary">${s.active ? 'Pausar' : 'Activar'}</button>
-                            </form>
-                            <form action="/searches/${s.id}/delete" method="POST" style="display:inline;"
-                                  onsubmit="return confirm('Eliminar esta busqueda?')">
-                                <button type="submit" class="btn btn-sm btn-danger">X</button>
-                            </form>
+                        <div class="items-panel" id="items-panel-${s.id}">
+                            <div class="items-loading">Cargando items...</div>
                         </div>
                     </div>
                 `).join('');
@@ -419,10 +543,134 @@
 
         async function loadRotationInfo() {
             try {
-                const res = await fetch('/api/v1/screen/status');
+                const res = await fetch('/api/v1/config');
                 const data = await res.json();
-                document.getElementById('rotation-interval').textContent = data.rotation_interval_seconds;
+                document.getElementById('rotation-interval').textContent = data.rotation_interval;
+                document.getElementById('search-interval').textContent = data.search_interval;
             } catch (e) {}
+        }
+
+        async function runSearchNow() {
+            const btn = document.getElementById('search-now-btn');
+            const originalText = btn.textContent;
+            btn.textContent = 'Buscando...';
+            btn.disabled = true;
+            btn.style.opacity = '0.6';
+
+            try {
+                const res = await fetch('/api/v1/watcher/run', { method: 'POST' });
+                const data = await res.json();
+
+                if (data.results) {
+                    const newItems = data.results.new_items_saved || 0;
+                    const processed = data.results.searches_processed || 0;
+                    alert(`Busqueda completada!\n${processed} busquedas procesadas\n${newItems} items nuevos encontrados`);
+                    loadSearches(); // Refresh the list
+                }
+            } catch (e) {
+                console.error('Error running search:', e);
+                alert('Error al ejecutar busqueda');
+            } finally {
+                btn.textContent = originalText;
+                btn.disabled = false;
+                btn.style.opacity = '1';
+            }
+        }
+
+        async function runSearchSingle(searchId, searchName) {
+            const btn = document.getElementById(`refresh-${searchId}`);
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '...';
+            btn.disabled = true;
+            btn.style.opacity = '0.6';
+
+            try {
+                const res = await fetch(`/api/v1/searches/${searchId}/run`, { method: 'POST' });
+                const data = await res.json();
+
+                if (data.results) {
+                    const newItems = data.results.new_items || 0;
+                    const itemsFound = data.results.items_found || 0;
+                    alert(`"${searchName}" actualizada!\n${itemsFound} items encontrados\n${newItems} nuevos`);
+                    loadSearches(); // Refresh the list
+                }
+            } catch (e) {
+                console.error('Error running search:', e);
+                alert('Error al ejecutar busqueda');
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+                btn.style.opacity = '1';
+            }
+        }
+
+        const loadedItems = {};
+
+        async function toggleItems(searchId, event) {
+            const panel = document.getElementById(`items-panel-${searchId}`);
+            const arrow = document.getElementById(`arrow-${searchId}`);
+
+            if (panel.classList.contains('open')) {
+                panel.classList.remove('open');
+                arrow.classList.remove('open');
+            } else {
+                panel.classList.add('open');
+                arrow.classList.add('open');
+
+                // Load items if not already loaded
+                if (!loadedItems[searchId]) {
+                    await loadItemsForSearch(searchId);
+                }
+            }
+        }
+
+        async function loadItemsForSearch(searchId) {
+            const panel = document.getElementById(`items-panel-${searchId}`);
+
+            try {
+                const res = await fetch(`/api/v1/searches/${searchId}/items?limit=50`);
+                const data = await res.json();
+
+                loadedItems[searchId] = true;
+
+                if (data.items.length === 0) {
+                    panel.innerHTML = '<div class="no-items">No hay items guardados. Ejecuta una busqueda primero.</div>';
+                    return;
+                }
+
+                panel.innerHTML = `<div class="items-list">
+                    ${data.items.map(item => `
+                        <div class="item-row">
+                            <img src="${item.image_url || ''}" alt="" onerror="this.style.display='none'">
+                            <div class="item-info">
+                                <div class="item-title">
+                                    <a href="https://es.wallapop.com/item/${item.web_slug}" target="_blank">${item.title || 'Sin titulo'}</a>
+                                </div>
+                                <div class="item-meta">
+                                    ${item.location || ''}
+                                    ${item.published_date ? ' | Publicado: ' + formatDate(item.published_date) : ''}
+                                    ${item.first_seen ? ' | Guardado: ' + new Date(item.first_seen).toLocaleDateString('es-ES') : ''}
+                                    ${item.price_history ? ' | Historial: ' + item.price_history : ''}
+                                </div>
+                            </div>
+                            <div class="item-price">${item.price ? (item.price/100).toFixed(2).replace('.', ',') + ' EUR' : 'N/A'}</div>
+                        </div>
+                    `).join('')}
+                </div>`;
+            } catch (e) {
+                console.error('Error loading items:', e);
+                panel.innerHTML = '<div class="no-items" style="color: #f87171;">Error cargando items</div>';
+            }
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return '';
+            try {
+                const date = new Date(dateStr);
+                return date.toLocaleDateString('es-ES') + ' ' + date.toLocaleTimeString('es-ES', {hour: '2-digit', minute: '2-digit'});
+            } catch (e) {
+                return dateStr;
+            }
         }
 
         checkHealth();

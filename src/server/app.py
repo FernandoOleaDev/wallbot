@@ -41,7 +41,7 @@ Path(f"{DATA_DIR}/logs").mkdir(parents=True, exist_ok=True)
 app = FastAPI(
     title="FerWallBot API",
     description="Monitor de busquedas en Wallapop con renderizado de imagenes para ESP32",
-    version="3.0.0"
+    version="0.17.0"
 )
 
 # Templates directory
@@ -63,11 +63,31 @@ async def home(request: Request):
     )
 
 
+def on_new_item_callback(search: dict, item: dict):
+    """Called when watcher finds a new item - regenerate image."""
+    from server.renderer import get_renderer
+    from server.database import get_db
+
+    renderer = get_renderer()
+    db = get_db()
+
+    # Get the latest item (which should be the one just added)
+    latest = db.get_latest_item(search["id"])
+
+    # Render and cache the image
+    if latest:
+        image_bytes = renderer.render_search_latest(search, latest)
+        renderer.save_render(search["id"], image_bytes)
+        print(f"  [Watcher] New item found: {item.get('title', 'N/A')[:40]} - Image rendered")
+
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize on startup."""
+    from server.wallapop.watcher import get_watcher
+
     print(f"")
-    print(f"  FerWallBot v3.0")
+    print(f"  FerWallBot v0.17")
     print(f"  ===============")
     print(f"  Environment: {ENV}")
     print(f"  Data directory: {DATA_DIR}")
@@ -77,11 +97,22 @@ async def startup_event():
     print(f"  Swagger: http://{HOST}:{PORT}/docs")
     print(f"")
 
+    # Start the watcher
+    watcher = get_watcher()
+    watcher.set_on_new_item_callback(on_new_item_callback)
+    watcher.start()
+    print(f"  [Watcher] Started (interval: {watcher.interval}s)")
+    print(f"")
+
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup on shutdown."""
-    print("Shutting down Wallbot server...")
+    from server.wallapop.watcher import get_watcher
+
+    print("Shutting down FerWallBot server...")
+    watcher = get_watcher()
+    watcher.stop()
 
 
 def main():
