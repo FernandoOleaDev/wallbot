@@ -2,6 +2,7 @@
 import io
 import logging
 import os
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any
 
@@ -110,11 +111,22 @@ class ImageRenderer:
         draw.text((4, y_pos), title, fill=TEXT_COLOR, font=self.font_regular)
         y_pos += 14
 
-        # Location
+        # Location + Date on same line
         location = item.get("location", "")
-        if location:
-            location = self._truncate_text(location, SCREEN_WIDTH - 8, self.font_small)
-            draw.text((4, y_pos), location, fill=SECONDARY_COLOR, font=self.font_small)
+        date_str = self._get_most_recent_date_str(item)
+
+        if location and date_str:
+            loc_date = f"{location} · {date_str}"
+        elif location:
+            loc_date = location
+        elif date_str:
+            loc_date = date_str
+        else:
+            loc_date = ""
+
+        if loc_date:
+            loc_date = self._truncate_text(loc_date, SCREEN_WIDTH - 8, self.font_small)
+            draw.text((4, y_pos), loc_date, fill=SECONDARY_COLOR, font=self.font_small)
 
         # Convert to JPG bytes
         return self._image_to_jpg_bytes(img)
@@ -204,6 +216,51 @@ class ImageRenderer:
         except Exception as e:
             logger.warning(f"Failed to fetch image from {url}: {e}")
             return None
+
+    def _get_most_recent_date_str(self, item: Dict[str, Any]) -> str:
+        """Get formatted string for most recent date (created or modified)."""
+        published = item.get("published_date")
+        modified = item.get("modified_at")
+
+        # Find most recent date
+        dates = []
+        if published:
+            dates.append(("Creado", published))
+        if modified:
+            dates.append(("Editado", modified))
+
+        if not dates:
+            return ""
+
+        # Get the most recent one
+        most_recent = max(dates, key=lambda x: x[1])
+        label, date_str = most_recent
+
+        # Format the date
+        try:
+            dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+            now = datetime.now(dt.tzinfo) if dt.tzinfo else datetime.utcnow()
+            diff = now - dt
+
+            days = diff.days
+            hours = diff.seconds // 3600
+            mins = diff.seconds // 60
+
+            if days == 0:
+                if hours == 0:
+                    time_str = f"{mins}m"
+                else:
+                    time_str = f"{hours}h"
+            elif days == 1:
+                time_str = "ayer"
+            elif days < 7:
+                time_str = f"{days}d"
+            else:
+                time_str = dt.strftime("%d/%m")
+
+            return f"{label}: {time_str}"
+        except Exception:
+            return ""
 
     def _truncate_text(self, text: str, max_width: int, font: ImageFont.FreeTypeFont) -> str:
         """Truncate text to fit within max_width pixels."""
