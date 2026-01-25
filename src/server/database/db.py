@@ -298,24 +298,24 @@ class Database:
         """Get items for a search."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            # Order by id DESC - newest inserted items first
+            # Order by id ASC - first item from Wallapop results first
             cursor.execute("""
                 SELECT * FROM item
                 WHERE search_id = ?
-                ORDER BY id DESC
+                ORDER BY id ASC
                 LIMIT ? OFFSET ?
             """, (search_id, limit, offset))
             rows = cursor.fetchall()
             return [self._row_to_item_dict(row) for row in rows]
 
     def get_latest_item(self, search_id: int) -> Optional[Dict[str, Any]]:
-        """Get the latest item for a search."""
+        """Get the first/best item for a search (first from Wallapop results)."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT * FROM item
                 WHERE search_id = ?
-                ORDER BY id DESC
+                ORDER BY id ASC
                 LIMIT 1
             """, (search_id,))
             row = cursor.fetchone()
