@@ -217,6 +217,18 @@ class Database:
             cursor.execute("DELETE FROM item WHERE search_id = ?", (search_id,))
             return cursor.rowcount
 
+    def delete_all_data(self) -> Dict[str, int]:
+        """Delete all searches and items from the database."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM item")
+            items_count = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM search")
+            searches_count = cursor.fetchone()[0]
+            cursor.execute("DELETE FROM item")
+            cursor.execute("DELETE FROM search")
+            return {"items_deleted": items_count, "searches_deleted": searches_count}
+
     def _row_to_search_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
         """Convert a database row to a search dictionary."""
         return {
@@ -286,10 +298,11 @@ class Database:
         """Get items for a search."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
+            # Order by id DESC - newest inserted items first
             cursor.execute("""
                 SELECT * FROM item
                 WHERE search_id = ?
-                ORDER BY first_seen DESC
+                ORDER BY id DESC
                 LIMIT ? OFFSET ?
             """, (search_id, limit, offset))
             rows = cursor.fetchall()
@@ -302,7 +315,7 @@ class Database:
             cursor.execute("""
                 SELECT * FROM item
                 WHERE search_id = ?
-                ORDER BY first_seen DESC
+                ORDER BY id DESC
                 LIMIT 1
             """, (search_id,))
             row = cursor.fetchone()

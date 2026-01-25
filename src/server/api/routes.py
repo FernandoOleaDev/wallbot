@@ -491,6 +491,28 @@ async def delete_search_items(search_id: int):
     }
 
 
+@router.delete("/reset")
+async def reset_database():
+    """Delete ALL searches and items from the database."""
+    from server.renderer import get_renderer
+    import shutil
+
+    db = get_db()
+    result = db.delete_all_data()
+
+    # Clear all cached renders
+    renderer = get_renderer()
+    if renderer.renders_dir.exists():
+        for f in renderer.renders_dir.glob("*.jpg"):
+            f.unlink()
+
+    return {
+        "message": f"Database reset complete",
+        "searches_deleted": result["searches_deleted"],
+        "items_deleted": result["items_deleted"]
+    }
+
+
 # ==================== CONFIGURATION ENDPOINTS ====================
 
 class ConfigResponse(BaseModel):

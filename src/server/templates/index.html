@@ -374,6 +374,7 @@
                     <a href="/screen" class="btn" style="background: #8b5cf6;">Ver Pantalla ESP32</a>
                     <a href="/config" class="btn" style="background: #6366f1;">Configuracion</a>
                     <a href="/docs" class="btn btn-secondary" target="_blank">Ver API Docs (Swagger)</a>
+                    <button onclick="resetDatabase()" class="btn btn-danger" id="reset-db-btn">Borrar Todo</button>
                 </div>
             </div>
 
@@ -604,6 +605,32 @@
             }
         }
 
+        async function resetDatabase() {
+            if (!confirm('ATENCION: Esto borrara TODAS las busquedas y productos. Esta seguro?')) {
+                return;
+            }
+            if (!confirm('Esta accion es IRREVERSIBLE. Confirmar borrado total?')) {
+                return;
+            }
+
+            const btn = document.getElementById('reset-db-btn');
+            btn.textContent = 'Borrando...';
+            btn.disabled = true;
+
+            try {
+                const res = await fetch('/api/v1/reset', { method: 'DELETE' });
+                const data = await res.json();
+                alert(`Base de datos borrada!\n${data.searches_deleted} busquedas eliminadas\n${data.items_deleted} items eliminados`);
+                loadSearches();
+            } catch (e) {
+                console.error('Error resetting database:', e);
+                alert('Error al borrar la base de datos');
+            } finally {
+                btn.textContent = 'Borrar Todo';
+                btn.disabled = false;
+            }
+        }
+
         const loadedItems = {};
 
         async function toggleItems(searchId, event) {
@@ -648,8 +675,7 @@
                                 </div>
                                 <div class="item-meta">
                                     ${item.location || ''}
-                                    ${item.published_date ? ' | Publicado: ' + formatDate(item.published_date) : ''}
-                                    ${item.first_seen ? ' | Guardado: ' + new Date(item.first_seen).toLocaleDateString('es-ES') : ''}
+                                    ${item.published_date ? ' | ' + formatDate(item.published_date) : ''}
                                     ${item.price_history ? ' | Historial: ' + item.price_history : ''}
                                 </div>
                             </div>

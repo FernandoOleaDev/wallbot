@@ -84,7 +84,7 @@ class WallapopClient:
                 url = self._build_url(keywords, min_price, max_price, category_ids, distance, order_by, items_count, time_filter)
 
             if page == 0:
-                print(f"  [API] URL: {url[:100]}...")
+                print(f"  [API] URL: {url}")
 
             try:
                 response = self._session.get(url, timeout=self.timeout)
@@ -136,7 +136,8 @@ class WallapopClient:
         # Convert keywords to URL format (proper encoding)
         keywords_encoded = quote_plus(keywords)
 
-        url = f"{self.base_url}?source=search_box"
+        url = f"{self.base_url}?source=quick_filters"
+        url += f"&country_code=ES"
         url += f"&keywords={keywords_encoded}"
 
         # Time filter mapping (API uses different values)
@@ -162,11 +163,12 @@ class WallapopClient:
         if max_price:
             url += f"&max_sale_price={max_price // 100}"
 
-        # Distance and location (0 means all Spain - don't add location params)
+        # Always include coordinates (API seems to require them for proper sorting)
+        url += f"&latitude={self.default_latitude}"
+        url += f"&longitude={self.default_longitude}"
+
+        # Distance filter (0 means all Spain - don't add distance param)
         if distance and distance > 0:
-            # Add coordinates for location-based search
-            url += f"&latitude={self.default_latitude}"
-            url += f"&longitude={self.default_longitude}"
             url += f"&distance={distance}000"  # Convert km to meters
 
         if order_by:
@@ -245,7 +247,27 @@ class WallapopClient:
             city = location.get("city", "")
 
             # Extract publication date if available
-            published_date = obj.get("creation_date") or obj.get("modified_date") or obj.get("publish_date")
+            # Debug: print first item's full structure to find date fields
+            if not hasattr(self, '_logged_keys'):
+                print(f"  [API] Item keys: {list(obj.keys())}")
+                # Print all values that look like dates (contain numbers and dashes/colons)
+                for k, v in obj.items():
+                    if v and isinstance(v, str) and ('20' in v or '19' in v):
+                        print(f"  [API] Possible date field: {k} = {v}")
+                self._logged_keys = True
+
+            # Try multiple possible date field names from Wallapop API
+            published_date = (
+                obj.get("modification_date") or
+                obj.get("creation_date") or
+                obj.get("publish_date") or
+                obj.get("bump_date") or
+                obj.get("publishDate") or
+                obj.get("modificationDate") or
+                obj.get("creationDate") or
+                obj.get("date") or
+                obj.get("timestamp")
+            )
 
             return {
                 "wallapop_id": obj.get("id"),
