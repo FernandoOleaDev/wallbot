@@ -225,7 +225,8 @@ class Watcher:
                         image_url=item["image_url"],
                         location=item["location"],
                         seller_id=item["seller_id"],
-                        published_date=item.get("published_date")
+                        created_at=item.get("created_at"),
+                        modified_at=item.get("modified_at")
                     )
                     result["new_items"] += 1
 

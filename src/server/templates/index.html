@@ -674,9 +674,10 @@
                                     <a href="https://es.wallapop.com/item/${item.web_slug}" target="_blank">${item.title || 'Sin titulo'}</a>
                                 </div>
                                 <div class="item-meta">
-                                    ${item.location || ''}
-                                    ${item.published_date ? ' | ' + formatDate(item.published_date) : ''}
-                                    ${item.price_history ? ' | Historial: ' + item.price_history : ''}
+                                    ${item.location || ''}${item.price_history ? ' | Hist: ' + item.price_history : ''}
+                                </div>
+                                <div class="item-meta">
+                                    ${item.published_date ? 'Creado: ' + formatDateShort(item.published_date) : ''}${item.published_date && item.modified_at ? ' · ' : ''}${item.modified_at ? 'Editado: ' + formatDateShort(item.modified_at) : ''}
                                 </div>
                             </div>
                             <div class="item-price">${item.price ? (item.price/100).toFixed(2).replace('.', ',') + ' EUR' : 'N/A'}</div>
@@ -696,6 +697,32 @@
                 return date.toLocaleDateString('es-ES') + ' ' + date.toLocaleTimeString('es-ES', {hour: '2-digit', minute: '2-digit'});
             } catch (e) {
                 return dateStr;
+            }
+        }
+
+        function getMostRecentDate(item) {
+            const dates = [item.published_date, item.modified_at].filter(d => d);
+            if (dates.length === 0) return null;
+            return dates.reduce((a, b) => new Date(a) > new Date(b) ? a : b);
+        }
+
+        function formatDateShort(dateStr) {
+            if (!dateStr) return '';
+            try {
+                const date = new Date(dateStr);
+                const now = new Date();
+                const diffMs = now - date;
+                const diffMins = Math.floor(diffMs / (1000 * 60));
+                const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+                const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+                if (diffMins < 60) return diffMins <= 1 ? 'ahora' : `${diffMins}m`;
+                if (diffHours < 24) return `${diffHours}h`;
+                if (diffDays === 1) return 'ayer';
+                if (diffDays < 7) return `${diffDays}d`;
+                return date.toLocaleDateString('es-ES', {day: '2-digit', month: '2-digit'});
+            } catch (e) {
+                return '';
             }
         }
 

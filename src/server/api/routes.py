@@ -78,6 +78,7 @@ class ItemResponse(BaseModel):
     location: Optional[str]
     first_seen: str
     published_date: Optional[str]
+    modified_at: Optional[str]
     wallapop_url: Optional[str]
 
 
@@ -225,6 +226,7 @@ async def list_search_items(
             location=item.get("location"),
             first_seen=item.get("first_seen", ""),
             published_date=item.get("published_date"),
+            modified_at=item.get("modified_at"),
             wallapop_url=item.get("wallapop_url")
         ))
 
@@ -265,6 +267,7 @@ async def get_latest_item(search_id: int):
         location=item.get("location"),
         first_seen=item.get("first_seen", ""),
         published_date=item.get("published_date"),
+        modified_at=item.get("modified_at"),
         wallapop_url=item.get("wallapop_url")
     )
 

@@ -246,28 +246,19 @@ class WallapopClient:
             location = obj.get("location", {})
             city = location.get("city", "")
 
-            # Extract publication date if available
-            # Debug: print first item's full structure to find date fields
-            if not hasattr(self, '_logged_keys'):
-                print(f"  [API] Item keys: {list(obj.keys())}")
-                # Print all values that look like dates (contain numbers and dashes/colons)
-                for k, v in obj.items():
-                    if v and isinstance(v, str) and ('20' in v or '19' in v):
-                        print(f"  [API] Possible date field: {k} = {v}")
-                self._logged_keys = True
+            # Extract dates from API (timestamps in milliseconds)
+            created_at_ms = obj.get("created_at")
+            modified_at_ms = obj.get("modified_at")
 
-            # Try multiple possible date field names from Wallapop API
-            published_date = (
-                obj.get("modification_date") or
-                obj.get("creation_date") or
-                obj.get("publish_date") or
-                obj.get("bump_date") or
-                obj.get("publishDate") or
-                obj.get("modificationDate") or
-                obj.get("creationDate") or
-                obj.get("date") or
-                obj.get("timestamp")
-            )
+            # Convert milliseconds timestamps to ISO format
+            created_at = None
+            modified_at = None
+            if created_at_ms and isinstance(created_at_ms, (int, float)):
+                from datetime import datetime
+                created_at = datetime.utcfromtimestamp(created_at_ms / 1000).isoformat() + "Z"
+            if modified_at_ms and isinstance(modified_at_ms, (int, float)):
+                from datetime import datetime
+                modified_at = datetime.utcfromtimestamp(modified_at_ms / 1000).isoformat() + "Z"
 
             return {
                 "wallapop_id": obj.get("id"),
@@ -276,9 +267,10 @@ class WallapopClient:
                 "web_slug": obj.get("web_slug", ""),
                 "image_url": image_url,
                 "location": city,
-                "seller_id": obj.get("user", {}).get("id", ""),
+                "seller_id": obj.get("user_id") or obj.get("user", {}).get("id", ""),
                 "description": obj.get("description", "")[:200] if obj.get("description") else None,
-                "published_date": published_date
+                "created_at": created_at,
+                "modified_at": modified_at
             }
         except Exception as e:
             logger.error(f"Error parsing item: {e}")

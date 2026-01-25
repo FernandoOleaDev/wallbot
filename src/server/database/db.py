@@ -93,11 +93,13 @@ class Database:
                 )
             """)
 
-            # Migration: add published_date column if it doesn't exist
+            # Migration: add date columns if they don't exist
             cursor.execute("PRAGMA table_info(item)")
             item_columns = [col[1] for col in cursor.fetchall()]
             if "published_date" not in item_columns:
                 cursor.execute("ALTER TABLE item ADD COLUMN published_date TEXT")
+            if "modified_at" not in item_columns:
+                cursor.execute("ALTER TABLE item ADD COLUMN modified_at TEXT")
 
             # Config table
             cursor.execute("""
@@ -253,7 +255,8 @@ class Database:
     def create_item(self, wallapop_id: str, search_id: int, title: str,
                     price: int, web_slug: str, image_url: str,
                     location: str, seller_id: str,
-                    published_date: Optional[str] = None) -> Optional[Dict[str, Any]]:
+                    created_at: Optional[str] = None,
+                    modified_at: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Create a new item (or ignore if duplicate)."""
         now = datetime.utcnow().isoformat() + "Z"
         with self._get_connection() as conn:
@@ -261,10 +264,10 @@ class Database:
             try:
                 cursor.execute("""
                     INSERT INTO item (wallapop_id, search_id, title, price, web_slug,
-                                     image_url, location, seller_id, published_date, first_seen, last_updated)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                     image_url, location, seller_id, published_date, modified_at, first_seen, last_updated)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (wallapop_id, search_id, title, price, web_slug,
-                      image_url, location, seller_id, published_date, now, now))
+                      image_url, location, seller_id, created_at, modified_at, now, now))
                 return self.get_item(cursor.lastrowid)
             except sqlite3.IntegrityError:
                 # Duplicate - return existing
@@ -345,6 +348,7 @@ class Database:
 
     def _row_to_item_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
         """Convert a database row to an item dictionary."""
+        keys = row.keys()
         return {
             "id": row["id"],
             "wallapop_id": row["wallapop_id"],
@@ -356,7 +360,8 @@ class Database:
             "image_url": row["image_url"],
             "location": row["location"],
             "seller_id": row["seller_id"],
-            "published_date": row["published_date"] if "published_date" in row.keys() else None,
+            "published_date": row["published_date"] if "published_date" in keys else None,
+            "modified_at": row["modified_at"] if "modified_at" in keys else None,
             "first_seen": row["first_seen"],
             "last_updated": row["last_updated"],
             "notified": bool(row["notified"]),
