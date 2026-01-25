@@ -99,10 +99,29 @@ class ImageRenderer:
         # Draw info section (bottom)
         y_pos = IMAGE_HEIGHT + 5
 
-        # Price (big, colored)
+        # Price (big, colored) + status icons
         price = item.get("price", 0)
         price_text = f"{price / 100:.0f} EUR" if price else "N/A"
-        draw.text((4, y_pos), price_text, fill=PRICE_COLOR, font=self.font_price)
+
+        # Add status indicators
+        status_icons = ""
+        if item.get("reserved"):
+            status_icons += "[R] "
+        if item.get("has_shipping"):
+            status_icons += "[E] "
+
+        if status_icons:
+            # Draw status icons in different colors
+            x_pos = 4
+            if item.get("reserved"):
+                draw.text((x_pos, y_pos), "[R]", fill=(245, 158, 11), font=self.font_small)
+                x_pos += 22
+            if item.get("has_shipping"):
+                draw.text((x_pos, y_pos), "[E]", fill=(59, 130, 246), font=self.font_small)
+                x_pos += 22
+            draw.text((x_pos, y_pos), price_text, fill=PRICE_COLOR, font=self.font_price)
+        else:
+            draw.text((4, y_pos), price_text, fill=PRICE_COLOR, font=self.font_price)
         y_pos += 20
 
         # Title (truncated)

@@ -93,13 +93,23 @@ class Database:
                 )
             """)
 
-            # Migration: add date columns if they don't exist
+            # Migration: add columns if they don't exist
             cursor.execute("PRAGMA table_info(item)")
             item_columns = [col[1] for col in cursor.fetchall()]
             if "published_date" not in item_columns:
                 cursor.execute("ALTER TABLE item ADD COLUMN published_date TEXT")
             if "modified_at" not in item_columns:
                 cursor.execute("ALTER TABLE item ADD COLUMN modified_at TEXT")
+            if "reserved" not in item_columns:
+                cursor.execute("ALTER TABLE item ADD COLUMN reserved INTEGER DEFAULT 0")
+            if "has_shipping" not in item_columns:
+                cursor.execute("ALTER TABLE item ADD COLUMN has_shipping INTEGER DEFAULT 0")
+
+            # Migration: add exclude_reserved to search table
+            cursor.execute("PRAGMA table_info(search)")
+            search_columns = [col[1] for col in cursor.fetchall()]
+            if "exclude_reserved" not in search_columns:
+                cursor.execute("ALTER TABLE search ADD COLUMN exclude_reserved INTEGER DEFAULT 0")
 
             # Config table
             cursor.execute("""
@@ -129,17 +139,18 @@ class Database:
     def create_search(self, name: str, keywords: str, min_price: Optional[int] = None,
                       max_price: Optional[int] = None, category_ids: Optional[str] = None,
                       distance: int = 400, active: bool = True,
-                      required_words: Optional[str] = None) -> Dict[str, Any]:
+                      required_words: Optional[str] = None,
+                      exclude_reserved: bool = False) -> Dict[str, Any]:
         """Create a new search."""
         now = datetime.utcnow().isoformat() + "Z"
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO search (name, keywords, min_price, max_price, category_ids,
-                                   distance, active, required_words, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                   distance, active, required_words, exclude_reserved, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (name, keywords, min_price, max_price, category_ids,
-                  distance, 1 if active else 0, required_words, now, now))
+                  distance, 1 if active else 0, required_words, 1 if exclude_reserved else 0, now, now))
 
             search_id = cursor.lastrowid
             return self.get_search(search_id)
@@ -185,7 +196,7 @@ class Database:
         """Update a search."""
         allowed_fields = {'name', 'keywords', 'min_price', 'max_price',
                          'category_ids', 'distance', 'active', 'last_item_id',
-                         'required_words'}
+                         'required_words', 'exclude_reserved'}
         updates = {k: v for k, v in kwargs.items() if k in allowed_fields}
 
         if not updates:
@@ -233,6 +244,7 @@ class Database:
 
     def _row_to_search_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
         """Convert a database row to a search dictionary."""
+        keys = row.keys()
         return {
             "id": row["id"],
             "name": row["name"],
@@ -244,8 +256,9 @@ class Database:
             "order_by": row["order_by"],
             "active": bool(row["active"]),
             "last_item_id": row["last_item_id"],
-            "required_words": row["required_words"] if "required_words" in row.keys() else None,
-            "items_count": row["items_count"] if "items_count" in row.keys() else 0,
+            "required_words": row["required_words"] if "required_words" in keys else None,
+            "exclude_reserved": bool(row["exclude_reserved"]) if "exclude_reserved" in keys else False,
+            "items_count": row["items_count"] if "items_count" in keys else 0,
             "created_at": row["created_at"],
             "updated_at": row["updated_at"]
         }
@@ -256,7 +269,9 @@ class Database:
                     price: int, web_slug: str, image_url: str,
                     location: str, seller_id: str,
                     created_at: Optional[str] = None,
-                    modified_at: Optional[str] = None) -> Optional[Dict[str, Any]]:
+                    modified_at: Optional[str] = None,
+                    reserved: bool = False,
+                    has_shipping: bool = False) -> Optional[Dict[str, Any]]:
         """Create a new item (or ignore if duplicate)."""
         now = datetime.utcnow().isoformat() + "Z"
         with self._get_connection() as conn:
@@ -264,10 +279,12 @@ class Database:
             try:
                 cursor.execute("""
                     INSERT INTO item (wallapop_id, search_id, title, price, web_slug,
-                                     image_url, location, seller_id, published_date, modified_at, first_seen, last_updated)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                     image_url, location, seller_id, published_date, modified_at,
+                                     reserved, has_shipping, first_seen, last_updated)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (wallapop_id, search_id, title, price, web_slug,
-                      image_url, location, seller_id, created_at, modified_at, now, now))
+                      image_url, location, seller_id, created_at, modified_at,
+                      1 if reserved else 0, 1 if has_shipping else 0, now, now))
                 return self.get_item(cursor.lastrowid)
             except sqlite3.IntegrityError:
                 # Duplicate - return existing
@@ -362,6 +379,8 @@ class Database:
             "seller_id": row["seller_id"],
             "published_date": row["published_date"] if "published_date" in keys else None,
             "modified_at": row["modified_at"] if "modified_at" in keys else None,
+            "reserved": bool(row["reserved"]) if "reserved" in keys else False,
+            "has_shipping": bool(row["has_shipping"]) if "has_shipping" in keys else False,
             "first_seen": row["first_seen"],
             "last_updated": row["last_updated"],
             "notified": bool(row["notified"]),

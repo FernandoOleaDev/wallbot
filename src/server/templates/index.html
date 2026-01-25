@@ -671,7 +671,7 @@
                             <img src="${item.image_url || ''}" alt="" onerror="this.style.display='none'">
                             <div class="item-info">
                                 <div class="item-title">
-                                    <a href="https://es.wallapop.com/item/${item.web_slug}" target="_blank">${item.title || 'Sin titulo'}</a>
+                                    ${item.reserved ? '<span style="color:#f59e0b" title="Reservado">&#9632;</span> ' : ''}${item.has_shipping ? '<span style="color:#3b82f6" title="Envio disponible">&#9992;</span> ' : ''}<a href="https://es.wallapop.com/item/${item.web_slug}" target="_blank">${item.title || 'Sin titulo'}</a>
                                 </div>
                                 <div class="item-meta">
                                     ${item.location || ''}${item.price_history ? ' | Hist: ' + item.price_history : ''}

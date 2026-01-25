@@ -212,6 +212,11 @@ class Watcher:
                         matched_count += 1
                         print(f"  [Filter] MATCH: '{item.get('title', 'N/A')[:60]}'")
 
+                # Check exclude_reserved filter
+                if search.get("exclude_reserved") and item.get("reserved"):
+                    filtered_count += 1
+                    continue
+
                 existing = db.get_item_by_wallapop_id(item["wallapop_id"], search["id"])
 
                 if existing is None:
@@ -226,7 +231,9 @@ class Watcher:
                         location=item["location"],
                         seller_id=item["seller_id"],
                         created_at=item.get("created_at"),
-                        modified_at=item.get("modified_at")
+                        modified_at=item.get("modified_at"),
+                        reserved=item.get("reserved", False),
+                        has_shipping=item.get("has_shipping", False)
                     )
                     result["new_items"] += 1
 

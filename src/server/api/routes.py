@@ -33,6 +33,7 @@ class SearchCreate(BaseModel):
     category_ids: Optional[str] = None
     distance: int = Field(400, ge=0, le=500)
     active: bool = True
+    exclude_reserved: bool = False
 
 
 class SearchUpdate(BaseModel):
@@ -43,6 +44,7 @@ class SearchUpdate(BaseModel):
     category_ids: Optional[str] = None
     distance: Optional[int] = Field(None, ge=0, le=500)
     active: Optional[bool] = None
+    exclude_reserved: Optional[bool] = None
 
 
 class SearchResponse(BaseModel):
@@ -55,6 +57,7 @@ class SearchResponse(BaseModel):
     distance: int
     order_by: str
     active: bool
+    exclude_reserved: bool = False
     last_item_id: Optional[str]
     items_count: int = 0
     created_at: str
@@ -79,6 +82,8 @@ class ItemResponse(BaseModel):
     first_seen: str
     published_date: Optional[str]
     modified_at: Optional[str]
+    reserved: bool = False
+    has_shipping: bool = False
     wallapop_url: Optional[str]
 
 
@@ -144,7 +149,8 @@ async def create_search(search: SearchCreate):
         max_price=search.max_price,
         category_ids=search.category_ids,
         distance=search.distance,
-        active=search.active
+        active=search.active,
+        exclude_reserved=search.exclude_reserved
     )
 
     return SearchResponse(**result)
@@ -227,6 +233,8 @@ async def list_search_items(
             first_seen=item.get("first_seen", ""),
             published_date=item.get("published_date"),
             modified_at=item.get("modified_at"),
+            reserved=item.get("reserved", False),
+            has_shipping=item.get("has_shipping", False),
             wallapop_url=item.get("wallapop_url")
         ))
 
@@ -268,6 +276,8 @@ async def get_latest_item(search_id: int):
         first_seen=item.get("first_seen", ""),
         published_date=item.get("published_date"),
         modified_at=item.get("modified_at"),
+        reserved=item.get("reserved", False),
+        has_shipping=item.get("has_shipping", False),
         wallapop_url=item.get("wallapop_url")
     )
 

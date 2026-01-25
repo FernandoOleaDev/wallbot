@@ -260,6 +260,15 @@ class WallapopClient:
                 from datetime import datetime
                 modified_at = datetime.utcfromtimestamp(modified_at_ms / 1000).isoformat() + "Z"
 
+            # Extract reserved and shipping info
+            # reserved is a dict like {'flag': False}, not a boolean
+            reserved_obj = obj.get("reserved", {})
+            reserved = reserved_obj.get("flag", False) if isinstance(reserved_obj, dict) else bool(reserved_obj)
+
+            # shipping is a dict like {'item_is_shippable': True, 'user_allows_shipping': False}
+            shipping_obj = obj.get("shipping", {})
+            has_shipping = shipping_obj.get("item_is_shippable", False) if isinstance(shipping_obj, dict) else bool(shipping_obj)
+
             return {
                 "wallapop_id": obj.get("id"),
                 "title": obj.get("title", ""),
@@ -270,7 +279,9 @@ class WallapopClient:
                 "seller_id": obj.get("user_id") or obj.get("user", {}).get("id", ""),
                 "description": obj.get("description", "")[:200] if obj.get("description") else None,
                 "created_at": created_at,
-                "modified_at": modified_at
+                "modified_at": modified_at,
+                "reserved": reserved,
+                "has_shipping": has_shipping
             }
         except Exception as e:
             logger.error(f"Error parsing item: {e}")
