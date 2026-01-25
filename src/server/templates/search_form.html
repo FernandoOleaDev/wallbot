@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} - FerWallBot</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        header {
+            background: linear-gradient(135deg, #13c1ac 0%, #0d9488 100%);
+            color: white;
+            padding: 20px 25px;
+            margin-bottom: 25px;
+            border-radius: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        header h1 {
+            font-size: 22px;
+            font-weight: 700;
+        }
+        header a {
+            color: white;
+            text-decoration: none;
+            opacity: 0.9;
+            font-size: 14px;
+            transition: opacity 0.2s;
+        }
+        header a:hover {
+            opacity: 1;
+        }
+        .card {
+            background: #16213e;
+            border-radius: 12px;
+            padding: 30px;
+            border: 1px solid #1f4068;
+        }
+        .form-group {
+            margin-bottom: 24px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #13c1ac;
+            font-size: 14px;
+        }
+        .hint {
+            font-size: 12px;
+            color: #666;
+            margin-top: 6px;
+        }
+        input[type="text"],
+        input[type="number"],
+        select {
+            width: 100%;
+            padding: 12px 14px;
+            border: 1px solid #1f4068;
+            border-radius: 8px;
+            font-size: 14px;
+            background: #1a1a2e;
+            color: #eee;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        input::placeholder {
+            color: #555;
+        }
+        input:focus,
+        select:focus {
+            outline: none;
+            border-color: #13c1ac;
+            box-shadow: 0 0 0 3px rgba(19, 193, 172, 0.2);
+        }
+        select {
+            cursor: pointer;
+        }
+        select option {
+            background: #1a1a2e;
+            color: #eee;
+        }
+        .toggle-label {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+            font-weight: 500;
+            color: #eee;
+            padding: 12px 14px;
+            background: #1a1a2e;
+            border: 1px solid #1f4068;
+            border-radius: 8px;
+            transition: border-color 0.2s;
+        }
+        .toggle-label:hover {
+            border-color: #13c1ac;
+        }
+        .toggle-label input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            accent-color: #13c1ac;
+        }
+        .price-row {
+            display: flex;
+            gap: 15px;
+        }
+        .price-row .form-group {
+            flex: 1;
+        }
+        .btn {
+            display: inline-block;
+            background: #13c1ac;
+            color: white;
+            padding: 14px 28px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        .btn:hover {
+            background: #0fa898;
+            transform: translateY(-1px);
+        }
+        .btn-secondary {
+            background: #374151;
+        }
+        .btn-secondary:hover {
+            background: #4b5563;
+        }
+        .actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #1f4068;
+        }
+        .section-title {
+            font-size: 13px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 15px;
+            margin-top: 10px;
+        }
+        @media (max-width: 500px) {
+            .price-row {
+                flex-direction: column;
+                gap: 0;
+            }
+            .actions {
+                flex-direction: column;
+            }
+            .btn {
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>{{ title }}</h1>
+            <a href="/">← Volver al panel</a>
+        </header>
+
+        <div class="card">
+            <form method="POST" action="{{ '/searches/' ~ search.id ~ '/edit' if search else '/searches/new' }}">
+
+                <div class="section-title">Informacion basica</div>
+
+                <div class="form-group">
+                    <label for="name">Nombre de la busqueda</label>
+                    <input type="text" id="name" name="name" required
+                           placeholder="Ej: Raspberry Pi 4"
+                           value="{{ search.name if search else '' }}">
+                    <div class="hint">Un nombre descriptivo para identificar esta busqueda</div>
+                </div>
+
+                <div class="form-group">
+                    <label for="keywords">Palabras clave</label>
+                    <input type="text" id="keywords" name="keywords" required
+                           placeholder="Ej: raspberry pi 4 8gb"
+                           value="{{ search.keywords if search else '' }}">
+                    <div class="hint">Terminos de busqueda en Wallapop</div>
+                </div>
+
+                <div class="section-title">Filtros de precio</div>
+
+                <div class="price-row">
+                    <div class="form-group">
+                        <label for="min_price">Precio minimo (cents)</label>
+                        <input type="number" id="min_price" name="min_price" min="0"
+                               placeholder="Ej: 3000"
+                               value="{{ search.min_price if search and search.min_price else '' }}">
+                        <div class="hint">3000 = 30,00 EUR</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="max_price">Precio maximo (cents)</label>
+                        <input type="number" id="max_price" name="max_price" min="0"
+                               placeholder="Ej: 8000"
+                               value="{{ search.max_price if search and search.max_price else '' }}">
+                        <div class="hint">8000 = 80,00 EUR</div>
+                    </div>
+                </div>
+
+                <div class="section-title">Ubicacion y categorias</div>
+
+                <div class="form-group">
+                    <label for="category_ids">Categorias (opcional)</label>
+                    <input type="text" id="category_ids" name="category_ids"
+                           placeholder="Ej: 12900,15245"
+                           value="{{ search.category_ids if search and search.category_ids else '' }}">
+                    <div class="hint">IDs de categorias separados por coma</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="all_spain" name="all_spain"
+                               {{ 'checked' if search and search.distance == 0 else '' }}
+                               onchange="toggleDistance()">
+                        <span>Buscar en toda Espana</span>
+                    </label>
+                </div>
+
+                <div class="form-group" id="distance-group">
+                    <label for="distance">Distancia maxima</label>
+                    <select id="distance" name="distance">
+                        <option value="10" {{ 'selected' if search and search.distance == 10 else '' }}>10 km</option>
+                        <option value="25" {{ 'selected' if search and search.distance == 25 else '' }}>25 km</option>
+                        <option value="50" {{ 'selected' if search and search.distance == 50 else '' }}>50 km</option>
+                        <option value="100" {{ 'selected' if search and search.distance == 100 else '' }}>100 km</option>
+                        <option value="200" {{ 'selected' if search and search.distance == 200 else '' }}>200 km</option>
+                        <option value="400" {{ 'selected' if (not search) or (search.distance != 0 and search.distance != 10 and search.distance != 25 and search.distance != 50 and search.distance != 100 and search.distance != 200) else '' }}>400 km</option>
+                    </select>
+                    <div class="hint">Radio de busqueda desde tu ubicacion</div>
+                </div>
+
+                <script>
+                    function toggleDistance() {
+                        const checkbox = document.getElementById('all_spain');
+                        const distanceGroup = document.getElementById('distance-group');
+                        const distanceSelect = document.getElementById('distance');
+                        distanceGroup.style.display = checkbox.checked ? 'none' : 'block';
+                        distanceSelect.disabled = checkbox.checked;
+                    }
+                    toggleDistance();
+                </script>
+
+                <div class="actions">
+                    <button type="submit" class="btn">
+                        {{ 'Guardar Cambios' if search else 'Crear Busqueda' }}
+                    </button>
+                    <a href="/" class="btn btn-secondary">Cancelar</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</body>
+</html>
