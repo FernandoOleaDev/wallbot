@@ -31,8 +31,8 @@ const char* WIFI_PASSWORD = "orQ5ygyjkhYUnUcdnM5x";
 const char* SERVER_HOST = "192.168.1.41";
 const int SERVER_PORT = 9500;
 
-// Intervalo de polling en milisegundos
-const unsigned long POLL_INTERVAL_MS = 10000;
+// Intervalo de polling en milisegundos (30 segundos)
+const unsigned long POLL_INTERVAL_MS = 30000;
 
 // ============================================
 // PINES ESP32-CAM
@@ -137,6 +137,36 @@ void showNoData() {
   tft.print(SERVER_HOST);
 }
 
+void showConnectingServer() {
+  tft.fillScreen(ST77XX_BLACK);
+  tft.setTextColor(ST77XX_CYAN);
+  tft.setTextSize(1);
+  tft.setCursor(10, 50);
+  tft.println("Conectando con");
+  tft.setCursor(10, 65);
+  tft.println("el servidor...");
+  tft.setTextColor(ST77XX_WHITE);
+  tft.setCursor(10, 95);
+  tft.print(SERVER_HOST);
+  tft.print(":");
+  tft.print(SERVER_PORT);
+}
+
+void showServerUnavailable() {
+  tft.fillScreen(ST77XX_YELLOW);
+  tft.setTextColor(ST77XX_BLACK);
+  tft.setTextSize(1);
+  tft.setCursor(10, 40);
+  tft.println("SERVIDOR");
+  tft.setCursor(10, 55);
+  tft.println("NO DISPONIBLE");
+  tft.setTextSize(1);
+  tft.setCursor(10, 85);
+  tft.print(SERVER_HOST);
+  tft.setCursor(10, 105);
+  tft.println("Reintentando...");
+}
+
 // ============================================
 // DECODIFICADOR JPEG
 // ============================================
@@ -222,6 +252,9 @@ bool fetchImage() {
     }
   }
 
+  // Mostrar mensaje de conexion
+  showConnectingServer();
+
   HTTPClient http;
   String url = String("http://") + SERVER_HOST + ":" + SERVER_PORT + "/api/v1/screen.jpg";
 
@@ -229,7 +262,7 @@ bool fetchImage() {
   Serial.println(url);
 
   http.begin(url);
-  http.setTimeout(15000);
+  http.setTimeout(10000);  // 10 segundos timeout
 
   int httpCode = http.GET();
 
@@ -278,6 +311,12 @@ bool fetchImage() {
     Serial.println("404 - Sin busquedas");
     showNoData();
     return true;
+  } else if (httpCode < 0) {
+    // Error de conexion (timeout, servidor no disponible, etc.)
+    Serial.print("Connection Error: ");
+    Serial.println(httpCode);
+    http.end();
+    showServerUnavailable();
   } else {
     Serial.print("HTTP Error: ");
     Serial.println(httpCode);
