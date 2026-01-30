@@ -23,4 +23,6 @@ COPY src/ src/
 RUN mkdir /data
 RUN mkdir /logs
 
-CMD [ "python3", "-m", "src.wallbot"]
+EXPOSE 9500
+
+CMD [ "python3", "-m", "uvicorn", "src.server.app:app", "--host", "0.0.0.0", "--port", "9500"]

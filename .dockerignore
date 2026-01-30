@@ -1,0 +1,11 @@
+venv/
+__pycache__/
+*.pyc
+.git/
+.gitignore
+tests/
+docs/
+esp32/
+*.md
+.env.example
+requirements-dev.txt

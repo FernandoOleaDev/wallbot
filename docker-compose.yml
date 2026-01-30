@@ -1,0 +1,21 @@
+version: "3.8"
+
+services:
+  wallbot-server:
+    build: .
+    container_name: wallbot-server
+    restart: unless-stopped
+    ports:
+      - "9500:9500"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - WALLBOT_ENV=production
+      - WALLBOT_HOST=0.0.0.0
+      - WALLBOT_PORT=9500
+      - WALLBOT_DATA_DIR=/app/data
+      - WALLBOT_LOG_LEVEL=INFO
+      - WALLBOT_SEARCH_INTERVAL=60
+      - WALLBOT_WALLAPOP_TIMEOUT=30
+      - WALLBOT_ROTATION_INTERVAL=10
+      - TZ=Europe/Madrid
