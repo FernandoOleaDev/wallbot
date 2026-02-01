@@ -104,6 +104,8 @@ class Database:
                 cursor.execute("ALTER TABLE item ADD COLUMN reserved INTEGER DEFAULT 0")
             if "has_shipping" not in item_columns:
                 cursor.execute("ALTER TABLE item ADD COLUMN has_shipping INTEGER DEFAULT 0")
+            if "description" not in item_columns:
+                cursor.execute("ALTER TABLE item ADD COLUMN description TEXT")
 
             # Migration: add exclude_reserved to search table
             cursor.execute("PRAGMA table_info(search)")
@@ -271,7 +273,8 @@ class Database:
                     created_at: Optional[str] = None,
                     modified_at: Optional[str] = None,
                     reserved: bool = False,
-                    has_shipping: bool = False) -> Optional[Dict[str, Any]]:
+                    has_shipping: bool = False,
+                    description: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Create a new item (or ignore if duplicate)."""
         now = datetime.utcnow().isoformat() + "Z"
         with self._get_connection() as conn:
@@ -280,11 +283,11 @@ class Database:
                 cursor.execute("""
                     INSERT INTO item (wallapop_id, search_id, title, price, web_slug,
                                      image_url, location, seller_id, published_date, modified_at,
-                                     reserved, has_shipping, first_seen, last_updated)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                     reserved, has_shipping, description, first_seen, last_updated)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (wallapop_id, search_id, title, price, web_slug,
                       image_url, location, seller_id, created_at, modified_at,
-                      1 if reserved else 0, 1 if has_shipping else 0, now, now))
+                      1 if reserved else 0, 1 if has_shipping else 0, description, now, now))
                 return self.get_item(cursor.lastrowid)
             except sqlite3.IntegrityError:
                 # Duplicate - return existing
@@ -381,6 +384,7 @@ class Database:
             "modified_at": row["modified_at"] if "modified_at" in keys else None,
             "reserved": bool(row["reserved"]) if "reserved" in keys else False,
             "has_shipping": bool(row["has_shipping"]) if "has_shipping" in keys else False,
+            "description": row["description"] if "description" in keys else None,
             "first_seen": row["first_seen"],
             "last_updated": row["last_updated"],
             "notified": bool(row["notified"]),

@@ -233,7 +233,8 @@ class Watcher:
                         created_at=item.get("created_at"),
                         modified_at=item.get("modified_at"),
                         reserved=item.get("reserved", False),
-                        has_shipping=item.get("has_shipping", False)
+                        has_shipping=item.get("has_shipping", False),
+                        description=item.get("description")
                     )
                     result["new_items"] += 1
 

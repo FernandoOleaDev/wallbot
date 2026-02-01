@@ -198,11 +198,25 @@ class ImageRenderer:
         title_font = self._load_font(18)
         title_lines = self._wrap_text(title, text_width, title_font)
 
-        for line in title_lines[:3]:  # Max 3 lines
-            if y > info_bottom - 50:
+        for line in title_lines[:2]:  # Max 2 lines for title
+            if y > info_bottom - 70:
                 break
             draw.text((PADDING, y), line, fill=TEXT_COLOR, font=title_font)
             y += 24
+
+        # Description (if available)
+        description = item.get("description", "")
+        if description:
+            y += 4
+            desc_font = self._load_font(13)
+            desc_lines = self._wrap_text(description, text_width, desc_font)
+            desc_color = (180, 180, 180)  # Lighter gray for description
+
+            for line in desc_lines[:2]:  # Max 2 lines for description
+                if y > info_bottom - 30:
+                    break
+                draw.text((PADDING, y), line, fill=desc_color, font=desc_font)
+                y += 18
 
         # Location and date
         y += 4
