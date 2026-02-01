@@ -321,14 +321,22 @@ async def get_screen_image(search_id: int):
 # ==================== ESP32 SCREEN ENDPOINTS ====================
 
 @router.get("/screen.jpg")
-async def get_esp32_screen():
+async def get_esp32_screen(width: int = 128, height: int = 160):
     """Get the current screen image for ESP32.
 
     This is the main endpoint for ESP32 polling.
     The server automatically rotates between active searches.
+
+    Args:
+        width: Screen width in pixels (default 128 for ST7735, use 240 for ILI9341)
+        height: Screen height in pixels (default 160 for ST7735, use 320 for ILI9341)
     """
     from server.screen_rotator import get_rotator
     from server.renderer import get_renderer
+
+    # Clamp dimensions to reasonable values
+    width = max(64, min(480, width))
+    height = max(64, min(640, height))
 
     rotator = get_rotator()
     current = rotator.get_current_search()
@@ -336,7 +344,7 @@ async def get_esp32_screen():
     if not current:
         # No active searches - return placeholder
         renderer = get_renderer()
-        image_bytes = renderer.render_no_items("Sin busquedas")
+        image_bytes = renderer.render_no_items("Sin busquedas", width, height)
         return Response(
             content=image_bytes,
             media_type="image/jpeg",
@@ -346,25 +354,28 @@ async def get_esp32_screen():
     renderer = get_renderer()
     db = get_db()
 
-    # Check if rendered image exists in cache
-    cached = renderer.get_cached_render(current['id'])
-    if cached:
-        return Response(
-            content=cached,
-            media_type="image/jpeg",
-            headers={
-                "Cache-Control": "no-cache, no-store, must-revalidate",
-                "X-Current-Search-Id": str(current["id"]),
-                "X-Current-Search-Name": current["name"]
-            }
-        )
+    # For non-default sizes, always generate fresh (don't use cache)
+    # Cache is only for 128x160 default size
+    if width == 128 and height == 160:
+        cached = renderer.get_cached_render(current['id'])
+        if cached:
+            return Response(
+                content=cached,
+                media_type="image/jpeg",
+                headers={
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "X-Current-Search-Id": str(current["id"]),
+                    "X-Current-Search-Name": current["name"]
+                }
+            )
 
     # Generate on-the-fly
     latest_item = db.get_latest_item(current['id'])
-    image_bytes = renderer.render_search_latest(current, latest_item)
+    image_bytes = renderer.render_search_latest(current, latest_item, width, height)
 
-    # Cache it
-    renderer.save_render(current['id'], image_bytes)
+    # Only cache default size
+    if width == 128 and height == 160:
+        renderer.save_render(current['id'], image_bytes)
 
     return Response(
         content=image_bytes,
@@ -372,7 +383,8 @@ async def get_esp32_screen():
         headers={
             "Cache-Control": "no-cache, no-store, must-revalidate",
             "X-Current-Search-Id": str(current["id"]),
-            "X-Current-Search-Name": current["name"]
+            "X-Current-Search-Name": current["name"],
+            "X-Screen-Size": f"{width}x{height}"
         }
     )
 

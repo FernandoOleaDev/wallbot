@@ -3,7 +3,10 @@
     "allow": [
       "Bash(pip install:*)",
       "Bash(python -c:*)",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(powershell -Command \"Expand-Archive -Path ''TFT_eSPI_Setups_v1.2.zip'' -DestinationPath ''temp_setups'' -Force\")",
+      "Bash(dir:*)",
+      "Bash(pip show:*)"
     ]
   }
 }

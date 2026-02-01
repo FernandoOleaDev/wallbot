@@ -1,19 +1,31 @@
-"""Image renderer for ESP32 TFT screen (128x160 pixels)."""
+"""Image renderer for ESP32 TFT screens (128x160, 240x320, 320x480 pixels)."""
 import io
 import logging
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 
+import qrcode
 import requests
 from PIL import Image, ImageDraw, ImageFont
 
 logger = logging.getLogger(__name__)
 
-# Screen dimensions
+# Default screen dimensions (ST7735 128x160)
 SCREEN_WIDTH = 128
 SCREEN_HEIGHT = 160
+
+# Layout ratios (for scaling)
+IMAGE_HEIGHT_RATIO = 0.625  # 100/160 = 62.5% for image
+INFO_HEIGHT_RATIO = 0.375   # 60/160 = 37.5% for info
+
+# Supported screen sizes
+SCREEN_SIZES = {
+    "small": (128, 160),   # ST7735 (ESP32-CAM)
+    "medium": (240, 320),  # ILI9341 (Freenove ESP32-S3)
+    "large": (320, 480),   # ILI9488
+}
 
 # Layout
 IMAGE_HEIGHT = 100
@@ -38,15 +50,18 @@ def get_renderer() -> 'ImageRenderer':
 
 
 class ImageRenderer:
-    """Renders item data to 128x160 JPG images for ESP32 TFT screen."""
+    """Renders item data to JPG images for ESP32 TFT screens (multiple sizes supported)."""
 
     def __init__(self):
         self.data_dir = Path(os.getenv("WALLBOT_DATA_DIR", "./data"))
         self.renders_dir = self.data_dir / "renders"
         self.renders_dir.mkdir(parents=True, exist_ok=True)
+        # Default fonts for 128x160
         self.font_regular = self._load_font(12)
         self.font_small = self._load_font(10)
         self.font_price = self._load_font(16)
+        # Fonts cache for different sizes
+        self._fonts_cache: Dict[Tuple[int, int], Dict[str, ImageFont.FreeTypeFont]] = {}
 
     def _load_font(self, size: int) -> ImageFont.FreeTypeFont:
         """Load a font, falling back to default if not available."""
@@ -70,34 +85,65 @@ class ImageRenderer:
         except Exception:
             return ImageFont.load_default()
 
-    def render_item(self, item: Dict[str, Any], search_name: str = "") -> bytes:
+    def _get_fonts_for_size(self, width: int, height: int) -> Dict[str, ImageFont.FreeTypeFont]:
+        """Get appropriately scaled fonts for given screen size."""
+        key = (width, height)
+        if key in self._fonts_cache:
+            return self._fonts_cache[key]
+
+        # Calculate scale factor based on screen height (160 is the base)
+        scale = height / 160
+
+        fonts = {
+            "regular": self._load_font(int(12 * scale)),
+            "small": self._load_font(int(10 * scale)),
+            "price": self._load_font(int(16 * scale)),
+            "title": self._load_font(int(14 * scale)),
+        }
+        self._fonts_cache[key] = fonts
+        return fonts
+
+    def render_item(self, item: Dict[str, Any], search_name: str = "",
+                    width: int = SCREEN_WIDTH, height: int = SCREEN_HEIGHT) -> bytes:
         """Render an item to a JPG image.
 
         Args:
             item: Item data with title, price, image_url, location
             search_name: Optional search name to display
+            width: Screen width (default 128)
+            height: Screen height (default 160)
 
         Returns:
             JPG image as bytes
         """
+        # Get fonts scaled for this screen size
+        fonts = self._get_fonts_for_size(width, height)
+        scale = height / 160
+
+        # Calculate layout dimensions
+        image_height = int(height * IMAGE_HEIGHT_RATIO)
+        padding = int(4 * scale)
+        line_spacing = int(12 * scale)
+        price_spacing = int(20 * scale)
+
         # Create base image
-        img = Image.new('RGB', (SCREEN_WIDTH, SCREEN_HEIGHT), BG_COLOR)
+        img = Image.new('RGB', (width, height), BG_COLOR)
         draw = ImageDraw.Draw(img)
 
         # Draw product image (top section)
-        product_img = self._fetch_and_resize_image(item.get("image_url"))
+        product_img = self._fetch_and_resize_image(item.get("image_url"), width, image_height)
         if product_img:
             # Center the product image
-            x_offset = (SCREEN_WIDTH - product_img.width) // 2
+            x_offset = (width - product_img.width) // 2
             img.paste(product_img, (x_offset, 0))
         else:
             # No image - draw placeholder
-            draw.rectangle([0, 0, SCREEN_WIDTH, IMAGE_HEIGHT], fill=(40, 40, 60))
-            draw.text((SCREEN_WIDTH // 2, IMAGE_HEIGHT // 2), "Sin imagen",
-                     fill=SECONDARY_COLOR, anchor="mm", font=self.font_small)
+            draw.rectangle([0, 0, width, image_height], fill=(40, 40, 60))
+            draw.text((width // 2, image_height // 2), "Sin imagen",
+                     fill=SECONDARY_COLOR, anchor="mm", font=fonts["small"])
 
         # Draw info section (bottom)
-        y_pos = IMAGE_HEIGHT + 5
+        y_pos = image_height + padding
 
         # Price (big, colored) + status icons
         price = item.get("price", 0)
@@ -110,25 +156,34 @@ class ImageRenderer:
         if item.get("has_shipping"):
             status_icons += "[E] "
 
+        icon_spacing = int(22 * scale)
         if status_icons:
             # Draw status icons in different colors
-            x_pos = 4
+            x_pos = padding
             if item.get("reserved"):
-                draw.text((x_pos, y_pos), "[R]", fill=(239, 68, 68), font=self.font_small)
-                x_pos += 22
+                draw.text((x_pos, y_pos), "[R]", fill=(239, 68, 68), font=fonts["small"])
+                x_pos += icon_spacing
             if item.get("has_shipping"):
-                draw.text((x_pos, y_pos), "[E]", fill=(59, 130, 246), font=self.font_small)
-                x_pos += 22
-            draw.text((x_pos, y_pos), price_text, fill=PRICE_COLOR, font=self.font_price)
+                draw.text((x_pos, y_pos), "[E]", fill=(59, 130, 246), font=fonts["small"])
+                x_pos += icon_spacing
+            draw.text((x_pos, y_pos), price_text, fill=PRICE_COLOR, font=fonts["price"])
         else:
-            draw.text((4, y_pos), price_text, fill=PRICE_COLOR, font=self.font_price)
-        y_pos += 20
+            draw.text((padding, y_pos), price_text, fill=PRICE_COLOR, font=fonts["price"])
+        y_pos += price_spacing
 
-        # Title (truncated, smaller font for more text)
+        # Title (truncated)
         title = item.get("title", "Sin titulo")
-        title = self._truncate_text(title, SCREEN_WIDTH - 8, self.font_small)
-        draw.text((4, y_pos), title, fill=TEXT_COLOR, font=self.font_small)
-        y_pos += 12
+        title = self._truncate_text(title, width - (padding * 2), fonts["small"])
+        draw.text((padding, y_pos), title, fill=TEXT_COLOR, font=fonts["small"])
+        y_pos += line_spacing
+
+        # Second line of title for larger screens
+        if width >= 240 and len(item.get("title", "")) > 30:
+            remaining = item.get("title", "")[len(title.replace("...", "")):]
+            if remaining:
+                remaining = self._truncate_text(remaining.strip(), width - (padding * 2), fonts["small"])
+                draw.text((padding, y_pos), remaining, fill=TEXT_COLOR, font=fonts["small"])
+                y_pos += line_spacing
 
         # Location + Date on same line
         location = item.get("location", "")
@@ -144,43 +199,67 @@ class ImageRenderer:
             loc_date = ""
 
         if loc_date:
-            loc_date = self._truncate_text(loc_date, SCREEN_WIDTH - 8, self.font_small)
-            draw.text((4, y_pos), loc_date, fill=SECONDARY_COLOR, font=self.font_small)
+            loc_date = self._truncate_text(loc_date, width - (padding * 2), fonts["small"])
+            draw.text((padding, y_pos), loc_date, fill=SECONDARY_COLOR, font=fonts["small"])
+            y_pos += line_spacing
+
+        # QR Code for large screens (320x480 or bigger)
+        if width >= 320 and height >= 480:
+            wallapop_url = item.get("wallapop_url")
+            if wallapop_url:
+                qr_size = int(70 * scale)
+                qr_img = self._generate_qr_code(wallapop_url, qr_size)
+                if qr_img:
+                    # Position QR in bottom-right, with label above
+                    qr_x = width - qr_size - padding
+                    qr_y = height - qr_size - padding
+                    img.paste(qr_img, (qr_x, qr_y))
+                    # Label above QR
+                    label_y = qr_y - int(14 * scale)
+                    draw.text((qr_x + qr_size // 2, label_y), "Abrir en",
+                             fill=SECONDARY_COLOR, anchor="mm", font=fonts["small"])
 
         # Convert to JPG bytes
         return self._image_to_jpg_bytes(img)
 
-    def render_search_latest(self, search: Dict[str, Any], latest_item: Optional[Dict[str, Any]]) -> bytes:
+    def render_search_latest(self, search: Dict[str, Any], latest_item: Optional[Dict[str, Any]],
+                             width: int = SCREEN_WIDTH, height: int = SCREEN_HEIGHT) -> bytes:
         """Render the latest item from a search.
 
         Args:
             search: Search data
             latest_item: Latest item or None
+            width: Screen width (default 128)
+            height: Screen height (default 160)
 
         Returns:
             JPG image as bytes
         """
         if latest_item:
-            return self.render_item(latest_item, search.get("name", ""))
+            return self.render_item(latest_item, search.get("name", ""), width, height)
         else:
-            return self.render_no_items(search.get("name", "Busqueda"))
+            return self.render_no_items(search.get("name", "Busqueda"), width, height)
 
-    def render_no_items(self, search_name: str = "") -> bytes:
+    def render_no_items(self, search_name: str = "",
+                        width: int = SCREEN_WIDTH, height: int = SCREEN_HEIGHT) -> bytes:
         """Render a 'no items' placeholder image."""
-        img = Image.new('RGB', (SCREEN_WIDTH, SCREEN_HEIGHT), BG_COLOR)
+        fonts = self._get_fonts_for_size(width, height)
+        scale = height / 160
+
+        img = Image.new('RGB', (width, height), BG_COLOR)
         draw = ImageDraw.Draw(img)
 
         # Draw search name at top
         if search_name:
-            name = self._truncate_text(search_name, SCREEN_WIDTH - 8, self.font_regular)
-            draw.text((SCREEN_WIDTH // 2, 20), name, fill=PRICE_COLOR,
-                     anchor="mm", font=self.font_regular)
+            name = self._truncate_text(search_name, width - 8, fonts["regular"])
+            draw.text((width // 2, int(20 * scale)), name, fill=PRICE_COLOR,
+                     anchor="mm", font=fonts["regular"])
 
         # Draw "no items" message
-        draw.text((SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2), "Sin items",
-                 fill=TEXT_COLOR, anchor="mm", font=self.font_price)
-        draw.text((SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 25), "Esperando...",
-                 fill=SECONDARY_COLOR, anchor="mm", font=self.font_small)
+        draw.text((width // 2, height // 2), "Sin items",
+                 fill=TEXT_COLOR, anchor="mm", font=fonts["price"])
+        draw.text((width // 2, height // 2 + int(25 * scale)), "Esperando...",
+                 fill=SECONDARY_COLOR, anchor="mm", font=fonts["small"])
 
         return self._image_to_jpg_bytes(img)
 
@@ -198,8 +277,19 @@ class ImageRenderer:
 
         return self._image_to_jpg_bytes(img)
 
-    def _fetch_and_resize_image(self, url: Optional[str]) -> Optional[Image.Image]:
-        """Fetch image from URL and resize for display."""
+    def _fetch_and_resize_image(self, url: Optional[str],
+                                target_width: int = SCREEN_WIDTH,
+                                target_height: int = IMAGE_HEIGHT) -> Optional[Image.Image]:
+        """Fetch image from URL and resize for display.
+
+        Args:
+            url: Image URL to fetch
+            target_width: Target width for the image area
+            target_height: Target height for the image area
+
+        Returns:
+            Resized PIL Image or None
+        """
         if not url:
             return None
 
@@ -211,23 +301,23 @@ class ImageRenderer:
             img = img.convert('RGB')
 
             # Resize to fit width while maintaining aspect ratio
-            ratio = SCREEN_WIDTH / img.width
+            ratio = target_width / img.width
             new_height = int(img.height * ratio)
 
             # If too tall, resize by height instead
-            if new_height > IMAGE_HEIGHT:
-                ratio = IMAGE_HEIGHT / img.height
+            if new_height > target_height:
+                ratio = target_height / img.height
                 new_width = int(img.width * ratio)
-                new_height = IMAGE_HEIGHT
+                new_height = target_height
             else:
-                new_width = SCREEN_WIDTH
+                new_width = target_width
 
             img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
 
             # Create a centered image on the correct dimensions
-            final = Image.new('RGB', (SCREEN_WIDTH, IMAGE_HEIGHT), BG_COLOR)
-            x_offset = (SCREEN_WIDTH - new_width) // 2
-            y_offset = (IMAGE_HEIGHT - new_height) // 2
+            final = Image.new('RGB', (target_width, target_height), BG_COLOR)
+            x_offset = (target_width - new_width) // 2
+            y_offset = (target_height - new_height) // 2
             final.paste(img, (x_offset, y_offset))
 
             return final
@@ -307,6 +397,34 @@ class ImageRenderer:
                 text_width = len(text) * 7
 
         return text
+
+    def _generate_qr_code(self, url: str, size: int) -> Optional[Image.Image]:
+        """Generate a QR code image for the given URL.
+
+        Args:
+            url: URL to encode in the QR code
+            size: Target size in pixels (width and height)
+
+        Returns:
+            PIL Image with QR code or None if generation fails
+        """
+        try:
+            qr = qrcode.QRCode(
+                version=1,
+                error_correction=qrcode.constants.ERROR_CORRECT_L,
+                box_size=2,
+                border=1,
+            )
+            qr.add_data(url)
+            qr.make(fit=True)
+
+            qr_img = qr.make_image(fill_color="white", back_color=BG_COLOR)
+            qr_img = qr_img.convert('RGB')
+            qr_img = qr_img.resize((size, size), Image.Resampling.NEAREST)
+            return qr_img
+        except Exception as e:
+            logger.warning(f"Failed to generate QR code: {e}")
+            return None
 
     def _image_to_jpg_bytes(self, img: Image.Image, quality: int = 85) -> bytes:
         """Convert PIL Image to JPG bytes."""
