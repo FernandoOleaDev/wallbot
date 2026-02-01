@@ -121,71 +121,182 @@ class ImageRenderer:
         scale = height / 160
 
         # Calculate layout dimensions
-        image_height = int(height * IMAGE_HEIGHT_RATIO)
-        padding = int(4 * scale)
-        line_spacing = int(12 * scale)
-        price_spacing = int(20 * scale)
+        is_large_screen = width >= 320 and height >= 480
 
         # Create base image
         img = Image.new('RGB', (width, height), BG_COLOR)
         draw = ImageDraw.Draw(img)
 
-        # Draw product image (top section)
-        product_img = self._fetch_and_resize_image(item.get("image_url"), width, image_height)
+        if is_large_screen:
+            # === LARGE SCREEN LAYOUT (320x480) ===
+            self._render_large_screen(img, draw, item, fonts, width, height)
+        else:
+            # === SMALL/MEDIUM SCREEN LAYOUT ===
+            self._render_small_screen(img, draw, item, fonts, width, height, scale)
+
+        # Convert to JPG bytes
+        return self._image_to_jpg_bytes(img)
+
+    def _render_large_screen(self, img: Image.Image, draw: ImageDraw.Draw,
+                              item: Dict[str, Any], fonts: Dict, width: int, height: int):
+        """Render layout for large screens (320x480) with QR code."""
+        # Layout constants for 320x480
+        PADDING = 12
+        IMAGE_H = 200
+        QR_SIZE = 80
+        QR_SECTION_H = 100
+
+        # Colors
+        ACCENT = (19, 193, 172)  # Teal
+
+        # === 1. PRODUCT IMAGE (top) ===
+        product_img = self._fetch_and_resize_image(item.get("image_url"), width, IMAGE_H)
         if product_img:
-            # Center the product image
             x_offset = (width - product_img.width) // 2
             img.paste(product_img, (x_offset, 0))
         else:
-            # No image - draw placeholder
+            draw.rectangle([0, 0, width, IMAGE_H], fill=(35, 35, 55))
+            draw.text((width // 2, IMAGE_H // 2), "Sin imagen",
+                     fill=SECONDARY_COLOR, anchor="mm", font=fonts["title"])
+
+        # === 2. INFO SECTION (middle) ===
+        info_top = IMAGE_H + PADDING
+        info_bottom = height - QR_SECTION_H
+        text_width = width - (PADDING * 2)
+
+        y = info_top
+
+        # Price row: [R] [E] 450 EUR
+        price = item.get("price", 0)
+        price_text = f"{price / 100:.0f} EUR" if price else "Gratis"
+
+        # Draw price large
+        price_font = self._load_font(32)
+        draw.text((PADDING, y), price_text, fill=ACCENT, font=price_font)
+
+        # Status badges to the right of price
+        price_bbox = price_font.getbbox(price_text)
+        badge_x = PADDING + price_bbox[2] + 12
+
+        badge_font = self._load_font(14)
+        if item.get("has_shipping"):
+            draw.rounded_rectangle([badge_x, y + 6, badge_x + 50, y + 26],
+                                   radius=4, fill=(30, 64, 120))
+            draw.text((badge_x + 25, y + 16), "Envío", fill=(100, 160, 255),
+                     anchor="mm", font=badge_font)
+            badge_x += 58
+        if item.get("reserved"):
+            draw.rounded_rectangle([badge_x, y + 6, badge_x + 70, y + 26],
+                                   radius=4, fill=(100, 30, 30))
+            draw.text((badge_x + 35, y + 16), "Reservado", fill=(255, 120, 120),
+                     anchor="mm", font=badge_font)
+
+        y += 44
+
+        # Title (multiple lines)
+        title = item.get("title", "Sin título")
+        title_font = self._load_font(18)
+        title_lines = self._wrap_text(title, text_width, title_font)
+
+        for line in title_lines[:3]:  # Max 3 lines
+            if y > info_bottom - 50:
+                break
+            draw.text((PADDING, y), line, fill=TEXT_COLOR, font=title_font)
+            y += 24
+
+        # Location and date
+        y += 4
+        location = item.get("location", "")
+        date_str = self._get_most_recent_date_str(item)
+        meta_font = self._load_font(14)
+
+        if location:
+            loc_text = self._truncate_text(location, text_width - 100, meta_font)
+            draw.text((PADDING, y), f"📍 {loc_text}", fill=SECONDARY_COLOR, font=meta_font)
+
+        if date_str:
+            draw.text((width - PADDING, y), date_str, fill=SECONDARY_COLOR,
+                     anchor="ra", font=meta_font)
+
+        # === 3. QR SECTION (bottom) ===
+        qr_section_top = height - QR_SECTION_H
+
+        # Separator line
+        draw.line([(PADDING, qr_section_top), (width - PADDING, qr_section_top)],
+                 fill=(50, 50, 70), width=1)
+
+        wallapop_url = item.get("wallapop_url")
+        if wallapop_url:
+            qr_img = self._generate_qr_code(wallapop_url, QR_SIZE)
+            if qr_img:
+                # QR on the right
+                qr_x = width - PADDING - QR_SIZE
+                qr_y = qr_section_top + (QR_SECTION_H - QR_SIZE) // 2
+                img.paste(qr_img, (qr_x, qr_y))
+
+                # Text on the left of QR
+                text_x = PADDING
+                text_y = qr_section_top + QR_SECTION_H // 2
+
+                cta_font = self._load_font(16)
+                small_font = self._load_font(12)
+
+                draw.text((text_x, text_y - 12), "Abrir en Wallapop",
+                         fill=TEXT_COLOR, font=cta_font)
+                draw.text((text_x, text_y + 10), "Escanea el código QR",
+                         fill=SECONDARY_COLOR, font=small_font)
+
+    def _render_small_screen(self, img: Image.Image, draw: ImageDraw.Draw,
+                              item: Dict[str, Any], fonts: Dict,
+                              width: int, height: int, scale: float):
+        """Render layout for small/medium screens (128x160, 240x320)."""
+        padding = int(4 * scale)
+        image_height = int(height * IMAGE_HEIGHT_RATIO)
+        line_spacing = int(12 * scale)
+        price_spacing = int(20 * scale)
+        text_max_width = width - (padding * 2)
+
+        # Product image
+        product_img = self._fetch_and_resize_image(item.get("image_url"), width, image_height)
+        if product_img:
+            x_offset = (width - product_img.width) // 2
+            img.paste(product_img, (x_offset, 0))
+        else:
             draw.rectangle([0, 0, width, image_height], fill=(40, 40, 60))
             draw.text((width // 2, image_height // 2), "Sin imagen",
                      fill=SECONDARY_COLOR, anchor="mm", font=fonts["small"])
 
-        # Draw info section (bottom)
         y_pos = image_height + padding
 
-        # Price (big, colored) + status icons
+        # Price + status icons
         price = item.get("price", 0)
         price_text = f"{price / 100:.0f} EUR" if price else "N/A"
 
-        # Add status indicators
-        status_icons = ""
-        if item.get("reserved"):
-            status_icons += "[R] "
-        if item.get("has_shipping"):
-            status_icons += "[E] "
-
         icon_spacing = int(22 * scale)
-        if status_icons:
-            # Draw status icons in different colors
-            x_pos = padding
-            if item.get("reserved"):
-                draw.text((x_pos, y_pos), "[R]", fill=(239, 68, 68), font=fonts["small"])
-                x_pos += icon_spacing
-            if item.get("has_shipping"):
-                draw.text((x_pos, y_pos), "[E]", fill=(59, 130, 246), font=fonts["small"])
-                x_pos += icon_spacing
-            draw.text((x_pos, y_pos), price_text, fill=PRICE_COLOR, font=fonts["price"])
-        else:
-            draw.text((padding, y_pos), price_text, fill=PRICE_COLOR, font=fonts["price"])
+        x_pos = padding
+        if item.get("reserved"):
+            draw.text((x_pos, y_pos), "[R]", fill=(239, 68, 68), font=fonts["small"])
+            x_pos += icon_spacing
+        if item.get("has_shipping"):
+            draw.text((x_pos, y_pos), "[E]", fill=(59, 130, 246), font=fonts["small"])
+            x_pos += icon_spacing
+        draw.text((x_pos, y_pos), price_text, fill=PRICE_COLOR, font=fonts["price"])
         y_pos += price_spacing
 
-        # Title (truncated)
+        # Title
         title = item.get("title", "Sin titulo")
-        title = self._truncate_text(title, width - (padding * 2), fonts["small"])
-        draw.text((padding, y_pos), title, fill=TEXT_COLOR, font=fonts["small"])
+        title_line1 = self._truncate_text(title, text_max_width, fonts["small"])
+        draw.text((padding, y_pos), title_line1, fill=TEXT_COLOR, font=fonts["small"])
         y_pos += line_spacing
 
-        # Second line of title for larger screens
-        if width >= 240 and len(item.get("title", "")) > 30:
-            remaining = item.get("title", "")[len(title.replace("...", "")):]
+        if width >= 240 and len(title) > len(title_line1.replace("...", "")):
+            remaining = title[len(title_line1.replace("...", "")):]
             if remaining:
-                remaining = self._truncate_text(remaining.strip(), width - (padding * 2), fonts["small"])
+                remaining = self._truncate_text(remaining.strip(), text_max_width, fonts["small"])
                 draw.text((padding, y_pos), remaining, fill=TEXT_COLOR, font=fonts["small"])
                 y_pos += line_spacing
 
-        # Location + Date on same line
+        # Location + Date
         location = item.get("location", "")
         date_str = self._get_most_recent_date_str(item)
 
@@ -199,28 +310,8 @@ class ImageRenderer:
             loc_date = ""
 
         if loc_date:
-            loc_date = self._truncate_text(loc_date, width - (padding * 2), fonts["small"])
+            loc_date = self._truncate_text(loc_date, text_max_width, fonts["small"])
             draw.text((padding, y_pos), loc_date, fill=SECONDARY_COLOR, font=fonts["small"])
-            y_pos += line_spacing
-
-        # QR Code for large screens (320x480 or bigger)
-        if width >= 320 and height >= 480:
-            wallapop_url = item.get("wallapop_url")
-            if wallapop_url:
-                qr_size = int(70 * scale)
-                qr_img = self._generate_qr_code(wallapop_url, qr_size)
-                if qr_img:
-                    # Position QR in bottom-right, with label above
-                    qr_x = width - qr_size - padding
-                    qr_y = height - qr_size - padding
-                    img.paste(qr_img, (qr_x, qr_y))
-                    # Label above QR
-                    label_y = qr_y - int(14 * scale)
-                    draw.text((qr_x + qr_size // 2, label_y), "Abrir en",
-                             fill=SECONDARY_COLOR, anchor="mm", font=fonts["small"])
-
-        # Convert to JPG bytes
-        return self._image_to_jpg_bytes(img)
 
     def render_search_latest(self, search: Dict[str, Any], latest_item: Optional[Dict[str, Any]],
                              width: int = SCREEN_WIDTH, height: int = SCREEN_HEIGHT) -> bytes:
@@ -370,6 +461,44 @@ class ImageRenderer:
             return f"{label}: {time_str}"
         except Exception:
             return ""
+
+    def _wrap_text(self, text: str, max_width: int, font: ImageFont.FreeTypeFont) -> list:
+        """Wrap text into multiple lines that fit within max_width pixels.
+
+        Args:
+            text: Text to wrap
+            max_width: Maximum width in pixels per line
+            font: Font to use for measuring
+
+        Returns:
+            List of text lines
+        """
+        if not text:
+            return []
+
+        words = text.split()
+        lines = []
+        current_line = ""
+
+        for word in words:
+            test_line = f"{current_line} {word}".strip() if current_line else word
+            try:
+                bbox = font.getbbox(test_line)
+                text_width = bbox[2] - bbox[0]
+            except Exception:
+                text_width = len(test_line) * 8
+
+            if text_width <= max_width:
+                current_line = test_line
+            else:
+                if current_line:
+                    lines.append(current_line)
+                current_line = word
+
+        if current_line:
+            lines.append(current_line)
+
+        return lines
 
     def _truncate_text(self, text: str, max_width: int, font: ImageFont.FreeTypeFont) -> str:
         """Truncate text to fit within max_width pixels."""

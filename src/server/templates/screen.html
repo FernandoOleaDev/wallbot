@@ -42,6 +42,26 @@
             align-items: center;
             gap: 20px;
         }
+        .screens-wrapper {
+            display: flex;
+            gap: 30px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .screen-box {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+        .screen-label {
+            font-size: 14px;
+            color: #888;
+            font-weight: 600;
+        }
+        .screen-label span {
+            color: #13c1ac;
+        }
         .device-frame {
             background: #000;
             border: 4px solid #333;
@@ -50,17 +70,28 @@
             box-shadow: 0 10px 40px rgba(0,0,0,0.5);
         }
         .screen-image {
-            width: 256px;
-            height: 320px;
             background: #222;
             display: flex;
             align-items: center;
             justify-content: center;
             image-rendering: pixelated;
         }
-        .screen-image img {
-            width: 256px;
+        .screen-image.medium {
+            width: 240px;
             height: 320px;
+        }
+        .screen-image.medium img {
+            width: 240px;
+            height: 320px;
+            image-rendering: pixelated;
+        }
+        .screen-image.large {
+            width: 320px;
+            height: 480px;
+        }
+        .screen-image.large img {
+            width: 320px;
+            height: 480px;
             image-rendering: pixelated;
         }
         .screen-image.error {
@@ -175,10 +206,27 @@
     </header>
 
     <div class="screen-container">
-        <div class="device-frame">
-            <div class="screen-image" id="screen">
-                <img src="/api/v1/screen.jpg" alt="ESP32 Screen" id="screen-img"
-                     onerror="this.parentElement.classList.add('error'); this.style.display='none'; this.parentElement.innerHTML='<div>Sin imagen disponible<br><small>Esperando datos...</small></div>';">
+        <div class="screens-wrapper">
+            <!-- Pantalla 240x320 (ILI9341 - ESP32-S3) -->
+            <div class="screen-box">
+                <div class="screen-label">ILI9341 <span>240x320</span></div>
+                <div class="device-frame">
+                    <div class="screen-image medium" id="screen-medium">
+                        <img src="/api/v1/screen.jpg?width=240&height=320" alt="ESP32 Screen 240x320" id="screen-img-medium"
+                             onerror="this.parentElement.classList.add('error'); this.style.display='none'; this.parentElement.innerHTML='<div>Sin imagen</div>';">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pantalla 320x480 (ILI9488 - Alta resolución con QR) -->
+            <div class="screen-box">
+                <div class="screen-label">ILI9488 <span>320x480</span> + QR</div>
+                <div class="device-frame">
+                    <div class="screen-image large" id="screen-large">
+                        <img src="/api/v1/screen.jpg?width=320&height=480" alt="ESP32 Screen 320x480" id="screen-img-large"
+                             onerror="this.parentElement.classList.add('error'); this.style.display='none'; this.parentElement.innerHTML='<div>Sin imagen</div>';">
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -214,8 +262,12 @@
         </div>
 
         <div class="url-box">
-            <div class="label">URL para ESP32:</div>
-            <span id="esp32-url">/api/v1/screen.jpg</span>
+            <div class="label">URL para ESP32 (240x320):</div>
+            <span>/api/v1/screen.jpg?width=240&height=320</span>
+        </div>
+        <div class="url-box">
+            <div class="label">URL para ESP32 (320x480 con QR):</div>
+            <span>/api/v1/screen.jpg?width=320&height=480</span>
         </div>
     </div>
 
@@ -249,15 +301,21 @@
         }
 
         function refreshImage() {
-            const img = document.getElementById('screen-img');
-            const container = document.getElementById('screen');
+            const timestamp = Date.now();
 
-            // Reset error state
-            container.classList.remove('error');
-            img.style.display = 'block';
+            // Refresh medium screen (240x320)
+            const imgMedium = document.getElementById('screen-img-medium');
+            const containerMedium = document.getElementById('screen-medium');
+            containerMedium.classList.remove('error');
+            imgMedium.style.display = 'block';
+            imgMedium.src = '/api/v1/screen.jpg?width=240&height=320&t=' + timestamp;
 
-            // Force reload with cache bust
-            img.src = '/api/v1/screen.jpg?' + Date.now();
+            // Refresh large screen (320x480)
+            const imgLarge = document.getElementById('screen-img-large');
+            const containerLarge = document.getElementById('screen-large');
+            containerLarge.classList.remove('error');
+            imgLarge.style.display = 'block';
+            imgLarge.src = '/api/v1/screen.jpg?width=320&height=480&t=' + timestamp;
         }
 
         async function forceNext() {
