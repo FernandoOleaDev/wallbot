@@ -277,7 +277,7 @@ class WallapopClient:
                 "image_url": image_url,
                 "location": city,
                 "seller_id": obj.get("user_id") or obj.get("user", {}).get("id", ""),
-                "description": obj.get("description", "")[:200] if obj.get("description") else None,
+                "description": obj.get("description", "")[:500] if obj.get("description") else None,
                 "created_at": created_at,
                 "modified_at": modified_at,
                 "reserved": reserved,

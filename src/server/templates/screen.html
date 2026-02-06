@@ -47,6 +47,7 @@
             gap: 30px;
             flex-wrap: wrap;
             justify-content: center;
+            align-items: flex-end;
         }
         .screen-box {
             display: flex;
@@ -76,6 +77,15 @@
             justify-content: center;
             image-rendering: pixelated;
         }
+        .screen-image.small {
+            width: 128px;
+            height: 160px;
+        }
+        .screen-image.small img {
+            width: 128px;
+            height: 160px;
+            image-rendering: pixelated;
+        }
         .screen-image.medium {
             width: 240px;
             height: 320px;
@@ -83,15 +93,6 @@
         .screen-image.medium img {
             width: 240px;
             height: 320px;
-            image-rendering: pixelated;
-        }
-        .screen-image.large {
-            width: 320px;
-            height: 480px;
-        }
-        .screen-image.large img {
-            width: 320px;
-            height: 480px;
             image-rendering: pixelated;
         }
         .screen-image.error {
@@ -207,23 +208,23 @@
 
     <div class="screen-container">
         <div class="screens-wrapper">
-            <!-- Pantalla 240x320 (ILI9341 - ESP32-S3) -->
+            <!-- Pantalla 128x160 (ST7735 - TFT antigua) -->
             <div class="screen-box">
-                <div class="screen-label">ILI9341 <span>240x320</span></div>
+                <div class="screen-label">ST7735 <span>128x160</span></div>
                 <div class="device-frame">
-                    <div class="screen-image medium" id="screen-medium">
-                        <img src="/api/v1/screen.jpg?width=240&height=320" alt="ESP32 Screen 240x320" id="screen-img-medium"
+                    <div class="screen-image small" id="screen-small">
+                        <img src="/api/v1/screen.jpg?width=128&height=160" alt="ESP32 Screen 128x160" id="screen-img-small"
                              onerror="this.parentElement.classList.add('error'); this.style.display='none'; this.parentElement.innerHTML='<div>Sin imagen</div>';">
                     </div>
                 </div>
             </div>
 
-            <!-- Pantalla 320x480 (ILI9488 - Alta resolución con QR) -->
+            <!-- Pantalla 240x320 (ILI9341 - ESP32-S3 con QR) -->
             <div class="screen-box">
-                <div class="screen-label">ILI9488 <span>320x480</span> + QR</div>
+                <div class="screen-label">ILI9341 <span>240x320</span> + QR</div>
                 <div class="device-frame">
-                    <div class="screen-image large" id="screen-large">
-                        <img src="/api/v1/screen.jpg?width=320&height=480" alt="ESP32 Screen 320x480" id="screen-img-large"
+                    <div class="screen-image medium" id="screen-medium">
+                        <img src="/api/v1/screen.jpg?width=240&height=320" alt="ESP32 Screen 240x320" id="screen-img-medium"
                              onerror="this.parentElement.classList.add('error'); this.style.display='none'; this.parentElement.innerHTML='<div>Sin imagen</div>';">
                     </div>
                 </div>
@@ -262,12 +263,12 @@
         </div>
 
         <div class="url-box">
-            <div class="label">URL para ESP32 (240x320):</div>
-            <span>/api/v1/screen.jpg?width=240&height=320</span>
+            <div class="label">URL para TFT antigua (128x160):</div>
+            <span>/api/v1/screen.jpg?width=128&height=160</span>
         </div>
         <div class="url-box">
-            <div class="label">URL para ESP32 (320x480 con QR):</div>
-            <span>/api/v1/screen.jpg?width=320&height=480</span>
+            <div class="label">URL para ESP32-S3 (240x320 con QR):</div>
+            <span>/api/v1/screen.jpg?width=240&height=320</span>
         </div>
     </div>
 
@@ -303,19 +304,19 @@
         function refreshImage() {
             const timestamp = Date.now();
 
+            // Refresh small screen (128x160)
+            const imgSmall = document.getElementById('screen-img-small');
+            const containerSmall = document.getElementById('screen-small');
+            containerSmall.classList.remove('error');
+            imgSmall.style.display = 'block';
+            imgSmall.src = '/api/v1/screen.jpg?width=128&height=160&t=' + timestamp;
+
             // Refresh medium screen (240x320)
             const imgMedium = document.getElementById('screen-img-medium');
             const containerMedium = document.getElementById('screen-medium');
             containerMedium.classList.remove('error');
             imgMedium.style.display = 'block';
             imgMedium.src = '/api/v1/screen.jpg?width=240&height=320&t=' + timestamp;
-
-            // Refresh large screen (320x480)
-            const imgLarge = document.getElementById('screen-img-large');
-            const containerLarge = document.getElementById('screen-large');
-            containerLarge.classList.remove('error');
-            imgLarge.style.display = 'block';
-            imgLarge.src = '/api/v1/screen.jpg?width=320&height=480&t=' + timestamp;
         }
 
         async function forceNext() {

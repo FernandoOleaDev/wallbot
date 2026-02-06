@@ -22,9 +22,8 @@ INFO_HEIGHT_RATIO = 0.375   # 60/160 = 37.5% for info
 
 # Supported screen sizes
 SCREEN_SIZES = {
-    "small": (128, 160),   # ST7735 (ESP32-CAM)
-    "medium": (240, 320),  # ILI9341 (Freenove ESP32-S3)
-    "large": (320, 480),   # ILI9488
+    "small": (128, 160),   # ST7735 (ESP32-CAM / TFT antigua)
+    "medium": (240, 320),  # ILI9341 (Freenove ESP32-S3) - con QR y descripción
 }
 
 # Layout
@@ -121,30 +120,37 @@ class ImageRenderer:
         scale = height / 160
 
         # Calculate layout dimensions
-        is_large_screen = width >= 320 and height >= 480
+        is_medium_screen = width >= 240 and height >= 320
 
         # Create base image
         img = Image.new('RGB', (width, height), BG_COLOR)
         draw = ImageDraw.Draw(img)
 
-        if is_large_screen:
-            # === LARGE SCREEN LAYOUT (320x480) ===
-            self._render_large_screen(img, draw, item, fonts, width, height)
+        if is_medium_screen:
+            # === MEDIUM SCREEN LAYOUT (240x320) con QR y descripción ===
+            self._render_medium_screen(img, draw, item, fonts, width, height)
         else:
-            # === SMALL/MEDIUM SCREEN LAYOUT ===
+            # === SMALL SCREEN LAYOUT (128x160) ===
             self._render_small_screen(img, draw, item, fonts, width, height, scale)
 
         # Convert to JPG bytes
         return self._image_to_jpg_bytes(img)
 
-    def _render_large_screen(self, img: Image.Image, draw: ImageDraw.Draw,
-                              item: Dict[str, Any], fonts: Dict, width: int, height: int):
-        """Render layout for large screens (320x480) with QR code."""
-        # Layout constants for 320x480
-        PADDING = 12
-        IMAGE_H = 200
-        QR_SIZE = 80
-        QR_SECTION_H = 100
+    def _render_medium_screen(self, img: Image.Image, draw: ImageDraw.Draw,
+                               item: Dict[str, Any], fonts: Dict, width: int, height: int):
+        """Render layout for medium screens (240x320) with QR code and description.
+
+        Layout optimizado para ESP32-S3 (240x320):
+        - Imagen producto (140px)
+        - Precio + badges
+        - Título (2 líneas)
+        - Descripción (hasta 4 líneas)
+        - Footer: QR derecha, ubicación+fecha a la izquierda
+        """
+        PADDING = 8
+        IMAGE_H = 140
+        QR_SIZE = 55
+        FOOTER_H = 60
 
         # Colors
         ACCENT = (19, 193, 172)  # Teal
@@ -159,106 +165,88 @@ class ImageRenderer:
             draw.text((width // 2, IMAGE_H // 2), "Sin imagen",
                      fill=SECONDARY_COLOR, anchor="mm", font=fonts["title"])
 
-        # === 2. INFO SECTION (middle) ===
+        # === 2. INFO SECTION ===
         info_top = IMAGE_H + PADDING
-        info_bottom = height - QR_SECTION_H
+        footer_top = height - FOOTER_H
         text_width = width - (PADDING * 2)
 
         y = info_top
 
-        # Price row: [R] [E] 450 EUR
+        # Price + badges
         price = item.get("price", 0)
         price_text = f"{price / 100:.0f} EUR" if price else "Gratis"
 
-        # Draw price large
-        price_font = self._load_font(32)
+        price_font = self._load_font(20)
         draw.text((PADDING, y), price_text, fill=ACCENT, font=price_font)
 
-        # Status badges to the right of price
         price_bbox = price_font.getbbox(price_text)
-        badge_x = PADDING + price_bbox[2] + 12
+        badge_x = PADDING + price_bbox[2] + 8
 
-        badge_font = self._load_font(14)
+        badge_font = self._load_font(10)
         if item.get("has_shipping"):
-            draw.rounded_rectangle([badge_x, y + 6, badge_x + 50, y + 26],
-                                   radius=4, fill=(30, 64, 120))
-            draw.text((badge_x + 25, y + 16), "Envío", fill=(100, 160, 255),
+            draw.rounded_rectangle([badge_x, y + 2, badge_x + 38, y + 16],
+                                   radius=2, fill=(30, 64, 120))
+            draw.text((badge_x + 19, y + 9), "Envío", fill=(100, 160, 255),
                      anchor="mm", font=badge_font)
-            badge_x += 58
+            badge_x += 42
         if item.get("reserved"):
-            draw.rounded_rectangle([badge_x, y + 6, badge_x + 70, y + 26],
-                                   radius=4, fill=(100, 30, 30))
-            draw.text((badge_x + 35, y + 16), "Reservado", fill=(255, 120, 120),
+            draw.rounded_rectangle([badge_x, y + 2, badge_x + 52, y + 16],
+                                   radius=2, fill=(100, 30, 30))
+            draw.text((badge_x + 26, y + 9), "Reservado", fill=(255, 120, 120),
                      anchor="mm", font=badge_font)
 
-        y += 44
+        y += 26
 
-        # Title (multiple lines)
+        # Title (max 2 lines)
         title = item.get("title", "Sin título")
-        title_font = self._load_font(18)
+        title_font = self._load_font(13)
         title_lines = self._wrap_text(title, text_width, title_font)
 
-        for line in title_lines[:2]:  # Max 2 lines for title
-            if y > info_bottom - 70:
-                break
+        for line in title_lines[:2]:
             draw.text((PADDING, y), line, fill=TEXT_COLOR, font=title_font)
-            y += 24
+            y += 16
 
-        # Description (if available)
+        # Description (max lines that fit)
         description = item.get("description", "")
         if description:
             y += 4
-            desc_font = self._load_font(13)
+            desc_font = self._load_font(10)
             desc_lines = self._wrap_text(description, text_width, desc_font)
-            desc_color = (180, 180, 180)  # Lighter gray for description
+            desc_color = (160, 160, 160)
 
-            for line in desc_lines[:2]:  # Max 2 lines for description
-                if y > info_bottom - 30:
+            for line in desc_lines:
+                if y > footer_top - 4:
                     break
                 draw.text((PADDING, y), line, fill=desc_color, font=desc_font)
-                y += 18
+                y += 13
 
-        # Location and date
-        y += 4
-        location = item.get("location", "")
-        date_str = self._get_most_recent_date_str(item)
-        meta_font = self._load_font(14)
-
-        if location:
-            loc_text = self._truncate_text(location, text_width - 100, meta_font)
-            draw.text((PADDING, y), f"📍 {loc_text}", fill=SECONDARY_COLOR, font=meta_font)
-
-        if date_str:
-            draw.text((width - PADDING, y), date_str, fill=SECONDARY_COLOR,
-                     anchor="ra", font=meta_font)
-
-        # === 3. QR SECTION (bottom) ===
-        qr_section_top = height - QR_SECTION_H
-
-        # Separator line
-        draw.line([(PADDING, qr_section_top), (width - PADDING, qr_section_top)],
+        # === 3. FOOTER: QR derecha + metadata izquierda ===
+        draw.line([(PADDING, footer_top), (width - PADDING, footer_top)],
                  fill=(50, 50, 70), width=1)
 
         wallapop_url = item.get("wallapop_url")
         if wallapop_url:
             qr_img = self._generate_qr_code(wallapop_url, QR_SIZE)
             if qr_img:
-                # QR on the right
                 qr_x = width - PADDING - QR_SIZE
-                qr_y = qr_section_top + (QR_SECTION_H - QR_SIZE) // 2
+                qr_y = footer_top + (FOOTER_H - QR_SIZE) // 2 + 2
                 img.paste(qr_img, (qr_x, qr_y))
 
-                # Text on the left of QR
-                text_x = PADDING
-                text_y = qr_section_top + QR_SECTION_H // 2
+        # Metadata (ubicación + fecha) a la izquierda del QR
+        meta_font = self._load_font(10)
+        location = item.get("location", "")
+        date_str = self._get_most_recent_date_str(item)
 
-                cta_font = self._load_font(16)
-                small_font = self._load_font(12)
+        meta_width = width - QR_SIZE - PADDING * 3
 
-                draw.text((text_x, text_y - 12), "Abrir en Wallapop",
-                         fill=TEXT_COLOR, font=cta_font)
-                draw.text((text_x, text_y + 10), "Escanea el código QR",
-                         fill=SECONDARY_COLOR, font=small_font)
+        meta_y = footer_top + 10
+        if location:
+            loc_text = self._truncate_text(location, meta_width, meta_font)
+            draw.text((PADDING, meta_y), f"📍 {loc_text}", fill=SECONDARY_COLOR, font=meta_font)
+            meta_y += 14
+
+        if date_str:
+            draw.text((PADDING, meta_y), date_str, fill=SECONDARY_COLOR, font=meta_font)
 
     def _render_small_screen(self, img: Image.Image, draw: ImageDraw.Draw,
                               item: Dict[str, Any], fonts: Dict,
